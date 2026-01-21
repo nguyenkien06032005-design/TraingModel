@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'config/theme/app_theme.dart';
 import 'features/detection/presentation/pages/camera_view_page.dart';
+import 'features/detection/data/datasources/tflite_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await TFLiteService().loadModel();
+
   runApp(const SafeVisionApp());
 }
 
