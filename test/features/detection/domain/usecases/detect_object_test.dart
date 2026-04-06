@@ -1,0 +1,282 @@
+import 'package:camera/camera.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+
+import 'package:safe_vision_app/core/usecases/usecase.dart';
+import 'package:safe_vision_app/features/detection/domain/entities/detection_object.dart';
+import 'package:safe_vision_app/features/detection/domain/repositories/detection_repository.dart';
+import 'package:safe_vision_app/features/detection/domain/usecases/detection_object_from_frame.dart';
+import 'package:safe_vision_app/features/detection/domain/usecases/load_model_usecase.dart';
+
+// ── Mocks ─────────────────────────────────────────────────────────────────
+
+class MockDetectionRepository extends Mock implements DetectionRepository {}
+class MockCameraImage extends Mock implements CameraImage {}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+/// Creates a DetectionObject at a given position for testing
+DetectionObject _makeDetection({
+  String label = 'person',
+  double confidence = 0.85,
+  double left = 0.1,
+  double top = 0.1,
+  double width = 0.3,
+  double height = 0.4,
+}) =>
+    DetectionObject(
+      label: label,
+      confidence: confidence,
+      boundingBox: BoundingBox(
+        left: left, top: top, width: width, height: height,
+      ),
+    );
+
+void main() {
+  late MockDetectionRepository mockRepository;
+  late MockCameraImage mockImage;
+
+  setUpAll(() {
+    // Register fallback values for mocktail
+    registerFallbackValue(MockCameraImage());
+    registerFallbackValue(const NoParams());
+  });
+
+  setUp(() {
+    mockRepository = MockDetectionRepository();
+    mockImage      = MockCameraImage();
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DetectionObjectFromFrame
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('DetectionObjectFromFrame', () {
+    late DetectionObjectFromFrame usecase;
+
+    setUp(() {
+      usecase = DetectionObjectFromFrame(mockRepository);
+    });
+
+    // Verifies that the usecase correctly delegates to the repository
+    test('calls repository.detectFromFrame with the provided image', () async {
+      when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
+          .thenAnswer((_) async => []);
+
+      await usecase(mockImage, rotationDegrees: 90);
+
+      verify(() => mockRepository.detectFromFrame(mockImage, rotationDegrees: 90)).called(1);
+    });
+
+    // Returns exactly what the repository gives back
+    test('returns list of DetectionObjects from repository', () async {
+      final expected = [
+        _makeDetection(label: 'person', confidence: 0.9),
+        _makeDetection(label: 'bicycle', confidence: 0.7),
+      ];
+      when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
+          .thenAnswer((_) async => expected);
+
+      final result = await usecase(mockImage, rotationDegrees: 90);
+
+      expect(result, equals(expected));
+      expect(result.length, 2);
+      expect(result[0].label, 'person');
+      expect(result[1].label, 'bicycle');
+    });
+
+    // Returns empty list when nothing is detected
+    test('returns empty list when no objects detected', () async {
+      when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
+          .thenAnswer((_) async => []);
+
+      final result = await usecase(mockImage, rotationDegrees: 90);
+
+      expect(result, isEmpty);
+    });
+
+    // Propagates exceptions from repository upstream
+    test('propagates exception from repository', () async {
+      when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
+          .thenThrow(Exception('Inference failed'));
+
+      expect(() => usecase(mockImage, rotationDegrees: 90), throwsException);
+    });
+
+    // Only calls repository once per invocation (no internal looping)
+    test('calls repository exactly once per call', () async {
+      when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
+          .thenAnswer((_) async => []);
+
+      await usecase(mockImage, rotationDegrees: 90);
+      await usecase(mockImage, rotationDegrees: 90);
+
+      verify(() => mockRepository.detectFromFrame(mockImage, rotationDegrees: 90)).called(2);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LoadModelUsecase
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('LoadModelUsecase', () {
+    late LoadModelUsecase usecase;
+
+    setUp(() {
+      usecase = LoadModelUsecase(mockRepository);
+    });
+
+    // .load() shortcut calls repository.loadModel()
+    test('load() calls repository.loadModel()', () async {
+      when(() => mockRepository.loadModel()).thenAnswer((_) async {});
+
+      await usecase.load();
+
+      verify(() => mockRepository.loadModel()).called(1);
+    });
+
+    // .call(NoParams()) also calls repository.loadModel()
+    test('call(NoParams()) calls repository.loadModel()', () async {
+      when(() => mockRepository.loadModel()).thenAnswer((_) async {});
+
+      await usecase.call(const NoParams());
+
+      verify(() => mockRepository.loadModel()).called(1);
+    });
+
+    // When load fails, exception bubbles up
+    test('load() propagates exception on failure', () async {
+      when(() => mockRepository.loadModel())
+          .thenThrow(Exception('Model file not found'));
+
+      expect(() => usecase.load(), throwsException);
+    });
+
+    // LoadModelUsecase implements UseCase<void, NoParams>
+    test('implements UseCase<void, NoParams>', () {
+      expect(usecase, isA<UseCase<void, NoParams>>());
+    });
+
+    // Does not call detectFromFrame — only loadModel
+    test('does not call detectFromFrame', () async {
+      when(() => mockRepository.loadModel()).thenAnswer((_) async {});
+
+      await usecase.load();
+
+      verifyNever(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')));
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DetectionObject entity — logic tests
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('DetectionObject', () {
+    test('voiceWarning includes label, position and proximity', () {
+      final obj = _makeDetection(
+        label: 'người đi bộ',
+        left: 0.1, top: 0.1, width: 0.4, height: 0.4,
+      );
+      // area = 0.4*0.4 = 0.16 > 0.10 → dangerous
+      // centerX = 0.1 + 0.2 = 0.30 ≈ 0.33 → 'bên trái' or 'phía trước'
+      expect(obj.voiceWarning, contains('người đi bộ'));
+    });
+
+    test('isDangerous true when area > 0.10', () {
+      // width=0.4, height=0.4 → area=0.16 > 0.10
+      final dangerous = _makeDetection(width: 0.4, height: 0.4);
+      expect(dangerous.isDangerous, isTrue);
+    });
+
+    test('isDangerous false when area <= 0.10', () {
+      // width=0.2, height=0.4 → area=0.08 ≤ 0.10
+      final safe = _makeDetection(width: 0.2, height: 0.4);
+      expect(safe.isDangerous, isFalse);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BoundingBox entity — computed properties
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('BoundingBox', () {
+    test('right = left + width', () {
+      const box = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
+      expect(box.right, closeTo(0.4, 1e-9));
+    });
+
+    test('bottom = top + height', () {
+      const box = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
+      expect(box.bottom, closeTo(0.6, 1e-9));
+    });
+
+    test('centerX = left + width/2', () {
+      const box = BoundingBox(left: 0.1, top: 0.0, width: 0.4, height: 0.0);
+      expect(box.centerX, closeTo(0.3, 1e-9));
+    });
+
+    test('centerY = top + height/2', () {
+      const box = BoundingBox(left: 0.0, top: 0.2, width: 0.0, height: 0.4);
+      expect(box.centerY, closeTo(0.4, 1e-9));
+    });
+
+    test('area = width * height', () {
+      const box = BoundingBox(left: 0.0, top: 0.0, width: 0.3, height: 0.5);
+      expect(box.area, closeTo(0.15, 1e-9));
+    });
+
+    group('horizontalPosition', () {
+      test('returns bên trái when centerX < 0.33', () {
+        // centerX = 0.0 + 0.1 = 0.10 < 0.33
+        const box = BoundingBox(left: 0.0, top: 0.0, width: 0.2, height: 0.1);
+        expect(box.horizontalPosition, 'bên trái');
+      });
+
+      test('returns bên phải when centerX > 0.67', () {
+        // centerX = 0.8 + 0.1 = 0.90 > 0.67
+        const box = BoundingBox(left: 0.8, top: 0.0, width: 0.2, height: 0.1);
+        expect(box.horizontalPosition, 'bên phải');
+      });
+
+      test('returns phía trước when centerX in [0.33, 0.67]', () {
+        // centerX = 0.4 + 0.1 = 0.50
+        const box = BoundingBox(left: 0.4, top: 0.0, width: 0.2, height: 0.1);
+        expect(box.horizontalPosition, 'phía trước');
+      });
+    });
+
+    group('proximityLabel', () {
+      test('returns rất gần when area > 0.25', () {
+        // 0.6 * 0.5 = 0.30 > 0.25
+        const box = BoundingBox(left: 0.0, top: 0.0, width: 0.6, height: 0.5);
+        expect(box.proximityLabel, 'rất gần');
+      });
+
+      test('returns gần when area in (0.10, 0.25]', () {
+        // 0.4 * 0.4 = 0.16
+        const box = BoundingBox(left: 0.0, top: 0.0, width: 0.4, height: 0.4);
+        expect(box.proximityLabel, 'gần');
+      });
+
+      test('returns trung bình when area in (0.03, 0.10]', () {
+        // 0.2 * 0.3 = 0.06
+        const box = BoundingBox(left: 0.0, top: 0.0, width: 0.2, height: 0.3);
+        expect(box.proximityLabel, 'trung bình');
+      });
+
+      test('returns xa when area <= 0.03', () {
+        // 0.1 * 0.1 = 0.01
+        const box = BoundingBox(left: 0.0, top: 0.0, width: 0.1, height: 0.1);
+        expect(box.proximityLabel, 'xa');
+      });
+    });
+
+    test('equality based on all four fields', () {
+      const a = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
+      const b = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
+      const c = BoundingBox(left: 0.9, top: 0.2, width: 0.3, height: 0.4);
+      expect(a, equals(b));
+      expect(a, isNot(equals(c)));
+    });
+  });
+}

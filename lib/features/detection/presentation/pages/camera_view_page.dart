@@ -1,0 +1,436 @@
+// file: lib/features/detection/presentation/pages/camera_view_page.dart
+// (Cover cả Bug 2, 7, 12 — trước đây dùng setState thay vì ValueNotifier)
+
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:safe_vision_app/core/error/exceptions.dart';
+
+import '../../../../core/services/camera_service.dart';
+import '../../../../core/utils/permission_handler.dart';
+import '../../../../injection_container.dart';
+import '../bloc/detection_bloc.dart';
+import '../bloc/detection_event.dart';
+import '../bloc/detection_state.dart';
+import '../widgets/bounding_box_painter.dart';
+import '../widgets/confidence_score_display.dart';
+import '../../domain/entities/detection_object.dart';
+import '../../../tts/presentation/bloc/tts_bloc.dart';
+import '../../../tts/presentation/bloc/tts_event.dart';
+import '../../../tts/presentation/widgets/voice_feedback_indicator.dart';
+
+class CameraViewPage extends StatefulWidget {
+  const CameraViewPage({super.key});
+
+  @override
+  State<CameraViewPage> createState() => _CameraViewPageState();
+}
+
+class _CameraViewPageState extends State<CameraViewPage>
+    with WidgetsBindingObserver {
+  final CameraService _cameraService = sl<CameraService>();
+  final BoxTracker    _tracker       = BoxTracker();
+
+  bool _cameraReady = false;
+
+  // P2-Fix5: Generation token — mỗi lần switch/start camera, token tăng lên.
+  // Frame sinh ra từ session cũ (đang bay trong DetectionBloc) sẽ bị discard
+  // khi gọi onDone() mà không dispatch event, tránh overlay lóe sai camera.
+  int _cameraSession = 0;
+
+  // Bug 12 FIX: ValueNotifier thay vì setState → không rebuild toàn bộ page
+  // mỗi lần có detection (6 lần/giây)
+  late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
+      ValueNotifier(const []);
+
+  _LifecyclePhase _phase = _LifecyclePhase.active;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    context.read<DetectionBloc>().add(const DetectionStarted());
+    _startCamera();
+  }
+
+  @override
+  void dispose() {
+    _phase = _LifecyclePhase.disposed;
+    WidgetsBinding.instance.removeObserver(this);
+    _tracker.clear();
+    _boxNotifier
+      ..value = const []
+      ..dispose(); // dispose ValueNotifier
+    context.read<DetectionBloc>().add(const DetectionStopped());
+    // Explicit TTS stop — DetectionBloc không còn hold TtsBloc reference (Bug 10)
+    context.read<TtsBloc>().add(const TtsStop());
+    _cameraService.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.inactive:
+        break;
+
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        if (_phase == _LifecyclePhase.active) {
+          _phase = _LifecyclePhase.paused;
+          _cameraService.stopImageStream();
+        }
+        break;
+
+      case AppLifecycleState.resumed:
+        if (_phase == _LifecyclePhase.paused) {
+          _phase = _LifecyclePhase.active;
+          if (_cameraService.isInitialized) {
+            _startStreaming();
+          } else {
+            _startCamera();
+          }
+        }
+        break;
+
+      case AppLifecycleState.hidden:
+        if (_phase == _LifecyclePhase.active) {
+          _phase = _LifecyclePhase.paused;
+          _cameraService.stopImageStream();
+        }
+        break;
+    }
+  }
+
+  // Bug 2 FIX: Request camera permission trước khi initialize
+  Future<void> _startCamera() async {
+    if (_phase == _LifecyclePhase.disposed) return;
+    try {
+      // Request permission — throws PermissionException nếu bị từ chối
+      await AppPermissionHandler.requestCamera();
+
+      await _cameraService.initialize();
+      if (!mounted || _phase == _LifecyclePhase.disposed) return;
+      setState(() => _cameraReady = true);
+      _startStreaming();
+    } on PermissionException catch (e) {
+      if (!mounted || _phase == _LifecyclePhase.disposed) return;
+      _showPermissionDialog(e.message);
+    } catch (e) {
+      debugPrint('[Page] camera init error: $e');
+    }
+  }
+
+  void _startStreaming() {
+    if (_phase == _LifecyclePhase.disposed) return;
+    // P2-Fix5: Snapshot session tại thời điểm bắt đầu stream.
+    // Closure giữ giá trị này — frame đến sau khi session thay đổi sẽ bị drop.
+    final int session = _cameraSession;
+    _cameraService.startImageStream(
+      onFrame: (CameraImage image, void Function() onDone) {
+        // Drop frame nếu session đã thay đổi (camera đã switch) hoặc page disposed
+        if (session != _cameraSession ||
+            !mounted ||
+            _phase == _LifecyclePhase.disposed) {
+          onDone();
+          return;
+        }
+        context.read<DetectionBloc>().add(
+          DetectionFrameReceived(image, _cameraService.rotationDegrees, onDone),
+        );
+      },
+    );
+  }
+
+  // Bug 7 FIX: Thêm _phase guard — không chỉ check mounted
+  Future<void> _switchCamera() async {
+    await _cameraService.stopImageStream();
+    if (!mounted || _phase == _LifecyclePhase.disposed) return;
+
+    // P2-Fix5: Tăng session trước khi clear UI — frame cũ đang bay trong bloc
+    // sẽ thấy session mismatch và tự drop (không emit vào boxNotifier)
+    _cameraSession++;
+
+    setState(() {
+      _cameraReady  = false;
+    });
+    _tracker.clear();
+    _boxNotifier.value = const [];
+
+    await _cameraService.switchCamera();
+    if (!mounted || _phase == _LifecyclePhase.disposed) return;
+
+    setState(() => _cameraReady = true);
+    _startStreaming();
+  }
+
+  // Bug 2 FIX: Dialog với nút mở Settings khi permission bị từ chối
+  void _showPermissionDialog(String message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Yêu cầu quyền Camera'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Huỷ'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              AppPermissionHandler.openSettings();
+            },
+            child: const Text('Mở Cài đặt'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Camera preview layer — RepaintBoundary tách repaint
+          RepaintBoundary(
+            child: _CameraLayer(
+              service:     _cameraService,
+              cameraReady: _cameraReady,
+            ),
+          ),
+
+          // Bug 12 FIX: BlocListener (không rebuild) + ValueListenableBuilder (chỉ repaint boxes)
+          // BlocBuilder chỉ rebuild khi state TYPE thay đổi (Loading, Ready, Failure)
+          // DetectionSuccess → KHÔNG rebuild widget tree — chỉ update ValueNotifier
+          MultiBlocListener(
+            listeners: [
+              BlocListener<DetectionBloc, DetectionState>(
+                listenWhen: (_, curr) =>
+                    curr is DetectionSuccess || curr is DetectionInitial,
+                listener: (_, state) {
+                  if (state is DetectionSuccess) {
+                    // P2-Fix5: Chỉ update tracker khi camera đã sẵn sàng.
+                    // Frame in-flight (đã vào DetectionBloc trước khi switch)
+                    // hoàn tất sau khi _cameraReady=false → discard ở đây,
+                    // tránh overlay lóe dữ liệu từ camera cũ.
+                    if (!_cameraReady) return;
+                    _boxNotifier.value = _tracker.update(state.detections);
+                  } else if (state is DetectionInitial) {
+                    _tracker.clear();
+                    _boxNotifier.value = const [];
+                  }
+                },
+              ),
+            ],
+            child: BlocBuilder<DetectionBloc, DetectionState>(
+              buildWhen: (prev, curr) {
+                // Không bao giờ rebuild vì DetectionSuccess
+                if (curr is DetectionSuccess) return false;
+                return curr.runtimeType != prev.runtimeType;
+              },
+              builder: (context, state) => _DetectionOverlay(
+                boxNotifier: _boxNotifier,
+                state:       state,
+                isFront:     _cameraService.isFrontCamera,
+                onError:     _buildError,
+              ),
+            ),
+          ),
+
+          Positioned(
+            top:   MediaQuery.of(context).padding.top + 8,
+            right: 8,
+            child: _buildControls(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(String msg) => Container(
+    padding:    const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color:        Colors.red.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(
+      'Lỗi: $msg',
+      style:     const TextStyle(color: Colors.white),
+      textAlign: TextAlign.center,
+    ),
+  );
+
+  Widget _buildControls(BuildContext ctx) => Column(
+    children: [
+      _IconBtn(
+        icon:    Icons.flip_camera_ios,
+        tooltip: 'Chuyển camera',
+        onTap:   _switchCamera,
+      ),
+      const SizedBox(height: 8),
+      _IconBtn(
+        icon:    Icons.volume_up,
+        tooltip: 'Tắt tiếng',
+        onTap:   () => ctx.read<TtsBloc>().add(const TtsStop()),
+      ),
+      const SizedBox(height: 8),
+      _IconBtn(
+        icon:    Icons.settings,
+        tooltip: 'Cài đặt',
+        onTap:   () => Navigator.pushNamed(ctx, '/settings'),
+      ),
+    ],
+  );
+}
+
+enum _LifecyclePhase { active, paused, disposed }
+
+// ── Detection overlay ─────────────────────────────────────────────────────
+
+class _DetectionOverlay extends StatelessWidget {
+  final ValueNotifier<List<SmoothedBox>> boxNotifier;
+  final DetectionState                   state;
+  final bool                             isFront;
+  final Widget Function(String)          onError;
+
+  const _DetectionOverlay({
+    required this.boxNotifier,
+    required this.state,
+    required this.isFront,
+    required this.onError,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Bug 12 FIX: ValueListenableBuilder — chỉ CustomPaint repaint, không rebuild stack
+        RepaintBoundary(
+          child: ValueListenableBuilder<List<SmoothedBox>>(
+            valueListenable: boxNotifier,
+            builder: (_, boxes, __) => IgnorePointer(
+              child: CustomPaint(
+                painter: BoundingBoxPainter(
+                  boxes:             boxes,
+                  mirrorHorizontal:  isFront,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        if (state is DetectionLoading)
+          Container(
+            color: Colors.black54,
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 12),
+                  Text('Đang tải mô hình AI...',
+                      style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+          ),
+
+        Positioned(
+          top:   MediaQuery.of(context).padding.top + 8,
+          left:  8,
+          right: 80,
+          child: Builder(
+            builder: (ctx) {
+              // Lấy detections từ state nếu có (để display confidence scores)
+              final detections = state is DetectionSuccess
+                  ? (state as DetectionSuccess).detections
+                  : <DetectionObject>[];
+              return ConfidenceScoreDisplay(detections: detections);
+            },
+          ),
+        ),
+
+        const Positioned(
+          bottom: 100,
+          left:   16,
+          right:  16,
+          child:  Align(
+            alignment: Alignment.center,
+            child:     VoiceFeedbackIndicator(),
+          ),
+        ),
+
+        if (state is DetectionFailure)
+          Positioned(
+            bottom: 16,
+            left:   16,
+            right:  16,
+            child:  onError((state as DetectionFailure).message),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Camera layer ──────────────────────────────────────────────────────────
+
+class _CameraLayer extends StatelessWidget {
+  final CameraService service;
+  final bool          cameraReady;
+
+  const _CameraLayer({required this.service, required this.cameraReady});
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = service.controller;
+    if (!cameraReady || ctrl == null || !ctrl.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    if (service.isFrontCamera) {
+      return Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()..scale(-1.0, 1.0),
+        child:     CameraPreview(ctrl),
+      );
+    }
+    return CameraPreview(ctrl);
+  }
+}
+
+// ── Icon button ───────────────────────────────────────────────────────────
+
+class _IconBtn extends StatelessWidget {
+  final IconData   icon;
+  final String     tooltip;
+  final VoidCallback onTap;
+
+  const _IconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Tooltip(
+      message: tooltip,
+      child: Container(
+        width:  44,
+        height: 44,
+        decoration: BoxDecoration(
+          color:  Colors.black.withValues(alpha: 0.55),
+          shape:  BoxShape.circle,
+          border: Border.all(color: Colors.white30),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    ),
+  );
+}
