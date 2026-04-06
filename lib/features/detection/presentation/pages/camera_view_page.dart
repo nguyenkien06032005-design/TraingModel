@@ -1,12 +1,11 @@
-
-
-
 import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:safe_vision_app/core/error/exceptions.dart';
+import '../../../settings/presentation/bloc/settings_bloc.dart';
+import '../../../settings/presentation/bloc/settings_state.dart';
 
 import '../../../../core/services/camera_service.dart';
 import '../../../../core/utils/permission_handler.dart';
@@ -31,17 +30,12 @@ class CameraViewPage extends StatefulWidget {
 class _CameraViewPageState extends State<CameraViewPage>
     with WidgetsBindingObserver {
   final CameraService _cameraService = sl<CameraService>();
-  final BoxTracker    _tracker       = BoxTracker();
+  final BoxTracker _tracker = BoxTracker();
 
   bool _cameraReady = false;
 
-  
-  
-  
   int _cameraSession = 0;
 
-  
-  
   late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
       ValueNotifier(const []);
   bool _boxNotifierDisposed = false;
@@ -61,7 +55,7 @@ class _CameraViewPageState extends State<CameraViewPage>
     _phase = _LifecyclePhase.disposed;
     WidgetsBinding.instance.removeObserver(this);
     context.read<DetectionBloc>().add(const DetectionStopped());
-    
+
     context.read<TtsBloc>().add(const TtsStop());
     _tracker.clear();
     _clearBoxes();
@@ -110,11 +104,9 @@ class _CameraViewPageState extends State<CameraViewPage>
     }
   }
 
-  
   Future<void> _startCamera() async {
     if (_phase == _LifecyclePhase.disposed) return;
     try {
-      
       await AppPermissionHandler.requestCamera();
 
       await _cameraService.initialize();
@@ -131,12 +123,10 @@ class _CameraViewPageState extends State<CameraViewPage>
 
   void _startStreaming() {
     if (_phase == _LifecyclePhase.disposed) return;
-    
-    
+
     final int session = _cameraSession;
     _cameraService.startImageStream(
       onFrame: (CameraImage image, void Function() onDone) {
-        
         if (session != _cameraSession ||
             !mounted ||
             _phase == _LifecyclePhase.disposed) {
@@ -144,23 +134,21 @@ class _CameraViewPageState extends State<CameraViewPage>
           return;
         }
         context.read<DetectionBloc>().add(
-          DetectionFrameReceived(image, _cameraService.rotationDegrees, onDone),
-        );
+              DetectionFrameReceived(
+                  image, _cameraService.rotationDegrees, onDone),
+            );
       },
     );
   }
 
-  
   Future<void> _switchCamera() async {
     await _cameraService.stopImageStream();
     if (!mounted || _phase == _LifecyclePhase.disposed) return;
 
-    
-    
     _cameraSession++;
 
     setState(() {
-      _cameraReady  = false;
+      _cameraReady = false;
     });
     _tracker.clear();
     _clearBoxes();
@@ -178,7 +166,6 @@ class _CameraViewPageState extends State<CameraViewPage>
     }
   }
 
-  
   void _showPermissionDialog(String message) {
     showDialog<void>(
       context: context,
@@ -210,17 +197,12 @@ class _CameraViewPageState extends State<CameraViewPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          
           RepaintBoundary(
             child: _CameraLayer(
-              service:     _cameraService,
+              service: _cameraService,
               cameraReady: _cameraReady,
             ),
           ),
-
-          
-          
-          
           MultiBlocListener(
             listeners: [
               BlocListener<DetectionBloc, DetectionState>(
@@ -232,10 +214,6 @@ class _CameraViewPageState extends State<CameraViewPage>
                     return;
                   }
                   if (state is DetectionSuccess) {
-                    
-                    
-                    
-                    
                     if (!_cameraReady) return;
                     _setBoxes(_tracker.update(state.detections));
                   } else if (state is DetectionInitial) {
@@ -247,21 +225,19 @@ class _CameraViewPageState extends State<CameraViewPage>
             ],
             child: BlocBuilder<DetectionBloc, DetectionState>(
               buildWhen: (prev, curr) {
-                
                 if (curr is DetectionSuccess) return false;
                 return curr.runtimeType != prev.runtimeType;
               },
               builder: (context, state) => _DetectionOverlay(
                 boxNotifier: _boxNotifier,
-                state:       state,
-                isFront:     _cameraService.isFrontCamera,
-                onError:     _buildError,
+                state: state,
+                isFront: _cameraService.isFrontCamera,
+                onError: _buildError,
               ),
             ),
           ),
-
           Positioned(
-            top:   MediaQuery.of(context).padding.top + 8,
+            top: MediaQuery.of(context).padding.top + 8,
             right: 8,
             child: _buildControls(context),
           ),
@@ -271,39 +247,39 @@ class _CameraViewPageState extends State<CameraViewPage>
   }
 
   Widget _buildError(String msg) => Container(
-    padding:    const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color:        Colors.red.withValues(alpha: 0.85),
-      borderRadius: BorderRadius.circular(10),
-    ),
-    child: Text(
-      'Lỗi: $msg',
-      style:     const TextStyle(color: Colors.white),
-      textAlign: TextAlign.center,
-    ),
-  );
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          'Lỗi: $msg',
+          style: const TextStyle(color: Colors.white),
+          textAlign: TextAlign.center,
+        ),
+      );
 
   Widget _buildControls(BuildContext ctx) => Column(
-    children: [
-      _IconBtn(
-        icon:    Icons.flip_camera_ios,
-        tooltip: 'Chuyển camera',
-        onTap:   _switchCamera,
-      ),
-      const SizedBox(height: 8),
-      _IconBtn(
-        icon:    Icons.volume_up,
-        tooltip: 'Tắt tiếng',
-        onTap:   () => ctx.read<TtsBloc>().add(const TtsStop()),
-      ),
-      const SizedBox(height: 8),
-      _IconBtn(
-        icon:    Icons.settings,
-        tooltip: 'Cài đặt',
-        onTap:   () => Navigator.pushNamed(ctx, '/settings'),
-      ),
-    ],
-  );
+        children: [
+          _IconBtn(
+            icon: Icons.flip_camera_ios,
+            tooltip: 'Chuyển camera',
+            onTap: _switchCamera,
+          ),
+          const SizedBox(height: 8),
+          _IconBtn(
+            icon: Icons.volume_up,
+            tooltip: 'Tắt tiếng',
+            onTap: () => ctx.read<TtsBloc>().add(const TtsStop()),
+          ),
+          const SizedBox(height: 8),
+          _IconBtn(
+            icon: Icons.settings,
+            tooltip: 'Cài đặt',
+            onTap: () => Navigator.pushNamed(ctx, '/settings'),
+          ),
+        ],
+      );
 
   void _setBoxes(List<SmoothedBox> boxes) {
     if (_phase == _LifecyclePhase.disposed || _boxNotifierDisposed) return;
@@ -321,13 +297,11 @@ class _CameraViewPageState extends State<CameraViewPage>
 
 enum _LifecyclePhase { active, paused, disposed }
 
-
-
 class _DetectionOverlay extends StatelessWidget {
   final ValueNotifier<List<SmoothedBox>> boxNotifier;
-  final DetectionState                   state;
-  final bool                             isFront;
-  final Widget Function(String)          onError;
+  final DetectionState state;
+  final bool isFront;
+  final Widget Function(String) onError;
 
   const _DetectionOverlay({
     required this.boxNotifier,
@@ -341,21 +315,19 @@ class _DetectionOverlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         RepaintBoundary(
           child: ValueListenableBuilder<List<SmoothedBox>>(
             valueListenable: boxNotifier,
             builder: (_, boxes, __) => IgnorePointer(
               child: CustomPaint(
                 painter: BoundingBoxPainter(
-                  boxes:             boxes,
-                  mirrorHorizontal:  isFront,
+                  boxes: boxes,
+                  mirrorHorizontal: isFront,
                 ),
               ),
             ),
           ),
         ),
-
         if (state is DetectionLoading)
           Container(
             color: Colors.black54,
@@ -371,49 +343,45 @@ class _DetectionOverlay extends StatelessWidget {
               ),
             ),
           ),
-
-        Positioned(
-          top:   MediaQuery.of(context).padding.top + 8,
-          left:  8,
-          right: 80,
-          child: Builder(
-            builder: (ctx) {
-              // Lấy detections từ state nếu có (để display confidence scores)
-              final detections = state is DetectionSuccess
-                  ? (state as DetectionSuccess).detections
-                  : <DetectionObject>[];
-              return ConfidenceScoreDisplay(detections: detections);
-            },
-          ),
+        BlocBuilder<SettingsBloc, SettingsState>(
+          buildWhen: (p, c) => p.showConfidencePanel != c.showConfidencePanel,
+          builder: (context, settings) {
+            if (!settings.showConfidencePanel) return const SizedBox.shrink();
+            final detections = state is DetectionSuccess
+                ? (state as DetectionSuccess).detections
+                : <DetectionObject>[];
+            return Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 8,
+              right: 80,
+              child: ConfidenceScoreDisplay(detections: detections),
+            );
+          },
         ),
-
         const Positioned(
           bottom: 100,
-          left:   16,
-          right:  16,
-          child:  Align(
+          left: 16,
+          right: 16,
+          child: Align(
             alignment: Alignment.center,
-            child:     VoiceFeedbackIndicator(),
+            child: VoiceFeedbackIndicator(),
           ),
         ),
-
         if (state is DetectionFailure)
           Positioned(
             bottom: 16,
-            left:   16,
-            right:  16,
-            child:  onError((state as DetectionFailure).message),
+            left: 16,
+            right: 16,
+            child: onError((state as DetectionFailure).message),
           ),
       ],
     );
   }
 }
 
-
-
 class _CameraLayer extends StatelessWidget {
   final CameraService service;
-  final bool          cameraReady;
+  final bool cameraReady;
 
   const _CameraLayer({required this.service, required this.cameraReady});
 
@@ -421,24 +389,23 @@ class _CameraLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = service.controller;
     if (!cameraReady || ctrl == null || !ctrl.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      return const Center(
+          child: CircularProgressIndicator(color: Colors.white));
     }
     if (service.isFrontCamera) {
       return Transform(
         alignment: Alignment.center,
         transform: Matrix4.identity()..scale(-1.0, 1.0),
-        child:     CameraPreview(ctrl),
+        child: CameraPreview(ctrl),
       );
     }
     return CameraPreview(ctrl);
   }
 }
 
-
-
 class _IconBtn extends StatelessWidget {
-  final IconData   icon;
-  final String     tooltip;
+  final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   const _IconBtn({
@@ -449,19 +416,19 @@ class _IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Tooltip(
-      message: tooltip,
-      child: Container(
-        width:  44,
-        height: 44,
-        decoration: BoxDecoration(
-          color:  Colors.black.withValues(alpha: 0.55),
-          shape:  BoxShape.circle,
-          border: Border.all(color: Colors.white30),
+        onTap: onTap,
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white30),
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    ),
-  );
+      );
 }

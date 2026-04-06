@@ -1,5 +1,3 @@
-
-
 import 'package:get_it/get_it.dart';
 import 'package:safe_vision_app/features/tts/presentation/bloc/tts_event.dart';
 
@@ -32,65 +30,54 @@ Future<void> init() async {
   sl.registerSingleton<SettingsRepository>(
     SettingsRepositoryImpl(sl<LocalStorageService>()),
   );
-  
+
   final ttsService = TtsService();
-  await ttsService.initialize(); 
+  await ttsService.initialize();
   sl.registerSingleton<TtsService>(ttsService);
 
   sl.registerSingleton<TtsRepository>(TtsRepositoryImpl(sl<TtsService>()));
   sl.registerSingleton(SpeakWarningUsecase(sl<TtsRepository>()));
   sl.registerSingleton(StopSpeakingUsecase(sl<TtsRepository>()));
-  sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>())); 
-  sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));  
+  sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>()));
+  sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));
 
   sl.registerSingleton(TtsBloc(
-    speakWarning:  sl(),
-    stopSpeaking:  sl(),
-    pauseSpeaking: sl<PauseSpeakingUsecase>(), 
+    speakWarning: sl(),
+    stopSpeaking: sl(),
+    pauseSpeaking: sl<PauseSpeakingUsecase>(),
     settingsRepository: sl<SettingsRepository>(),
   ));
 
-  
-  
   sl.registerSingleton(DetectionConfig());
 
-  
   sl.registerSingleton<DetectionLocalDatasource>(
-    
     DetectionLocalDatasourceImpl(sl<DetectionConfig>()),
   );
   sl.registerSingleton<DetectionRepository>(DetectionRepositoryImpl(sl()));
   sl.registerSingleton(LoadModelUsecase(sl<DetectionRepository>()));
   sl.registerSingleton(DetectionObjectFromFrame(sl<DetectionRepository>()));
 
-  
-  
   sl.registerFactory(() => DetectionBloc(
-    loadModel:       sl(),
-    detectFromFrame: sl(),
-    onWarning: ({
-      required String text,
-      required bool immediate,
-      required bool withVibration,
-    }) {
-      
-      sl<TtsBloc>().add(
-        TtsSpeak(text, immediate: immediate, withVibration: withVibration),
-      );
-    },
-  ));
+        loadModel: sl(),
+        detectFromFrame: sl(),
+        repository: sl<DetectionRepository>(),
+        onWarning: ({
+          required String text,
+          required bool immediate,
+          required bool withVibration,
+        }) {
+          sl<TtsBloc>().add(
+            TtsSpeak(text, immediate: immediate, withVibration: withVibration),
+          );
+        },
+      ));
 
-  
   sl.registerSingleton(CameraService());
 
-  
-
-  
-  
   sl.registerFactory(() => SettingsBloc(
-    sl<SettingsRepository>(),
-    sl<ConfigureTtsUsecase>(),
-    sl<StopSpeakingUsecase>(),
-    sl<DetectionConfig>(),
-  ));
+        sl<SettingsRepository>(),
+        sl<ConfigureTtsUsecase>(),
+        sl<StopSpeakingUsecase>(),
+        sl<DetectionConfig>(),
+      ));
 }

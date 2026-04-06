@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -12,15 +6,14 @@ import '../../../../core/constants/app_constants.dart';
 class TtsService {
   final FlutterTts _tts = FlutterTts();
 
-  bool           _isSpeaking = false;
-  final List<String>        _queue      = [];
+  bool _isSpeaking = false;
+  final List<String> _queue = [];
   final Map<String, DateTime> _lastSpoken = {};
 
-  
-  String _language   = AppConstants.ttsLanguage;
+  String _language = AppConstants.ttsLanguage;
   double _speechRate = AppConstants.ttsSpeechRate;
-  double _pitch      = AppConstants.ttsPitch;
-  double _volume     = AppConstants.ttsVolume;
+  double _pitch = AppConstants.ttsPitch;
+  double _volume = AppConstants.ttsVolume;
 
   Future<void> initialize({
     String? language,
@@ -28,31 +21,46 @@ class TtsService {
     double? pitch,
     double? volume,
   }) async {
-    
-    if (language   != null) _language   = language;
+    if (language != null) _language = language;
     if (speechRate != null) _speechRate = speechRate;
-    if (pitch      != null) _pitch      = pitch;
-    if (volume     != null) _volume     = volume;
+    if (pitch != null) _pitch = pitch;
+    if (volume != null) _volume = volume;
 
     await _tts.setLanguage(_language);
     await _tts.setSpeechRate(_speechRate);
     await _tts.setPitch(_pitch);
     await _tts.setVolume(_volume);
 
-    _tts.setStartHandler(()      { _isSpeaking = true; });
-    _tts.setCompletionHandler(() { _isSpeaking = false; _processQueue(); });
-    _tts.setCancelHandler(()    { _isSpeaking = false; _queue.clear(); });
-    _tts.setErrorHandler((_)    { _isSpeaking = false; _processQueue(); });
+    _tts.setStartHandler(() {
+      _isSpeaking = true;
+    });
+    _tts.setCompletionHandler(() {
+      _isSpeaking = false;
+      _processQueue();
+    });
+    _tts.setCancelHandler(() {
+      _isSpeaking = false;
+      _queue.clear();
+    });
+    _tts.setErrorHandler((_) {
+      _isSpeaking = false;
+      _processQueue();
+    });
   }
 
   Future<void> speakWarning(String text) async {
-    final now  = DateTime.now();
+    final now = DateTime.now();
     final last = _lastSpoken[text];
-    
+
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
       return;
     }
+    _lastSpoken.removeWhere((_, time) =>
+        now.difference(time).inMilliseconds > AppConstants.ttsCooldownMs * 2);
+
+    _lastSpoken[text] = now;
+    _enqueue(text);
     if (_lastSpoken.length > 200) {
       final expiredKeys = _lastSpoken.entries
           .where((e) =>
@@ -77,7 +85,7 @@ class TtsService {
 
   Future<void> stop() async {
     _queue.clear();
-    _lastSpoken.clear(); 
+    _lastSpoken.clear();
     await _tts.stop();
     _isSpeaking = false;
   }
@@ -86,10 +94,9 @@ class TtsService {
 
   bool get isSpeaking => _isSpeaking;
 
-  
   Future<void> dispose() async {
     _queue.clear();
-    _lastSpoken.clear(); 
+    _lastSpoken.clear();
     await _tts.stop();
     _isSpeaking = false;
   }

@@ -4,8 +4,11 @@
 
 
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:safe_vision_app/features/detection/domain/repositories/detection_repository.dart';
 
 import '../../domain/entities/detection_object.dart';
 import '../../domain/usecases/load_model_usecase.dart';
@@ -23,7 +26,8 @@ typedef DetectionWarningCallback = void Function({
 class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   final LoadModelUsecase         _loadModel;
   final DetectionObjectFromFrame _detectFromFrame;
-  final DetectionWarningCallback _onWarning; 
+  final DetectionWarningCallback _onWarning;
+  final DetectionRepository      _repository;
 
   
   Map<String, List<double>> _previousObjects = {};
@@ -37,9 +41,11 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     required LoadModelUsecase         loadModel,
     required DetectionObjectFromFrame detectFromFrame,
     required DetectionWarningCallback onWarning,
+    required DetectionRepository      repository,
   })  : _loadModel       = loadModel,
         _detectFromFrame = detectFromFrame,
         _onWarning       = onWarning,
+        _repository      = repository,
         super(const DetectionInitial()) {
     on<DetectionStarted>(_onStarted);
     on<DetectionStopped>(_onStopped);
@@ -73,6 +79,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   void _onStopped(DetectionStopped event, Emitter<DetectionState> emit) {
     _previousObjects.clear();
     emit(const DetectionInitial());
+    unawaited(_repository.closeModel());
     
     
   }
