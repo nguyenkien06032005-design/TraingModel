@@ -1,7 +1,7 @@
-// file: lib/features/settings/presentation/bloc/settings_bloc.dart
-// Bug 4 FIX:  Dùng DetectionConfig.setConfidenceThreshold thay vì AppConstants
-// Bug 6 FIX:  _onLanguage gọi _configureTts
-// Bug 11 FIX: Inject ConfigureTtsUsecase thay vì TtsService trực tiếp
+
+
+
+
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -14,9 +14,9 @@ import 'settings_state.dart';
 
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository  _repository;
-  final ConfigureTtsUsecase _configureTts;    // Bug 11 FIX: usecase, không phải TtsService
+  final ConfigureTtsUsecase _configureTts;    
   final StopSpeakingUsecase _stopSpeaking;
-  final DetectionConfig     _detectionConfig; // Bug 4 FIX: mutable config object
+  final DetectionConfig     _detectionConfig; 
 
   SettingsBloc(
     this._repository,
@@ -43,8 +43,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     final showPanel    = await _repository.getShowConfidencePanel();
     final language     = await _repository.getTtsLanguage();
 
-    // Sync DetectionConfig với persisted value khi load
+    
     _detectionConfig.setConfidenceThreshold(confThresh);
+    await _configureTts(
+      speechRate: speechRate,
+      language: language,
+    );
 
     emit(state.copyWith(
       speechRate:          speechRate,
@@ -61,7 +65,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setSpeechRate(e.rate);
-    await _configureTts(speechRate: e.rate); // Bug 11 FIX: usecase
+    await _configureTts(speechRate: e.rate); 
     emit(state.copyWith(speechRate: e.rate));
   }
 
@@ -70,7 +74,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setConfidenceThreshold(e.threshold);
-    // Bug 4 FIX: Update live config → inference pipeline nhận ngay giá trị mới
+    
     _detectionConfig.setConfidenceThreshold(e.threshold);
     emit(state.copyWith(confidenceThreshold: e.threshold));
   }
@@ -83,8 +87,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (!e.enabled) {
       await _stopSpeaking();
     }
-    // Stop TTS thông qua usecase khi tắt voice
-    if (!e.enabled) await _configureTts(); // configure với empty = không đổi gì → OK
     emit(state.copyWith(voiceEnabled: e.enabled));
   }
 
@@ -101,8 +103,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setTtsLanguage(e.lang);
-    // Bug 6 FIX: Re-initialize TTS engine với language mới
-    // Bug 11 FIX: Thông qua usecase, không import TtsService
+    
+    
     await _configureTts(language: e.lang);
     emit(state.copyWith(ttsLanguage: e.lang));
   }

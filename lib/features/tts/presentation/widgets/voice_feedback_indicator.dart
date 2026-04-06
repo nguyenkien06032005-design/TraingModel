@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/tts_bloc.dart';
 import '../bloc/tts_state.dart';
 
-/// Widget hiển thị trạng thái đang nói + tên vật thể đang được đọc
+
 class VoiceFeedbackIndicator extends StatelessWidget {
   const VoiceFeedbackIndicator({super.key});
 

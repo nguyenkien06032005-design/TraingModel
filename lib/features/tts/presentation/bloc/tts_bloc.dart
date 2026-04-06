@@ -11,7 +11,7 @@ import 'tts_state.dart';
 class TtsBloc extends Bloc<TtsEvent, TtsState> {
   final SpeakWarningUsecase  _speakWarning;
   final StopSpeakingUsecase  _stopSpeaking;
-  final PauseSpeakingUsecase _pauseSpeaking; // Bug 9 FIX
+  final PauseSpeakingUsecase _pauseSpeaking; 
   final SettingsRepository   _settingsRepository;
 
   TtsBloc({
@@ -65,7 +65,7 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
   }
 
   Future<void> _onPause(TtsPause event, Emitter<TtsState> emit) async {
-    // Bug 9 FIX: Thực sự pause TTS engine thay vì chỉ emit state
+    
     await _pauseSpeaking();
     emit(const TtsPaused());
   }

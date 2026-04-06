@@ -1,10 +1,11 @@
-// file: lib/features/tts/data/datasources/tts_service.dart
-// Bug 5 FIX: Dùng AppConstants.ttsCooldownMs
-// Bug 8 FIX: dispose() async
-// Bug 11 FIX: configure() partial update
-// FIX: _lastSpoken cleared trong stop() + dispose() — tránh memory leak và cooldown stale qua session
+
+
+
+
+
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../../../core/constants/app_constants.dart';
 
@@ -15,7 +16,7 @@ class TtsService {
   final List<String>        _queue      = [];
   final Map<String, DateTime> _lastSpoken = {};
 
-  // Bug 11 FIX: Cache current config để partial update không reset unrelated settings
+  
   String _language   = AppConstants.ttsLanguage;
   double _speechRate = AppConstants.ttsSpeechRate;
   double _pitch      = AppConstants.ttsPitch;
@@ -27,7 +28,7 @@ class TtsService {
     double? pitch,
     double? volume,
   }) async {
-    // Chỉ update những gì được truyền vào — không reset các field khác
+    
     if (language   != null) _language   = language;
     if (speechRate != null) _speechRate = speechRate;
     if (pitch      != null) _pitch      = pitch;
@@ -47,10 +48,21 @@ class TtsService {
   Future<void> speakWarning(String text) async {
     final now  = DateTime.now();
     final last = _lastSpoken[text];
-    // Bug 5 FIX: AppConstants.ttsCooldownMs thay vì hardcoded 3000
+    
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
       return;
+    }
+    if (_lastSpoken.length > 200) {
+      final expiredKeys = _lastSpoken.entries
+          .where((e) =>
+              now.difference(e.value).inMilliseconds >
+              AppConstants.ttsCooldownMs * 2)
+          .map((e) => e.key)
+          .toList();
+      for (final key in expiredKeys) {
+        _lastSpoken.remove(key);
+      }
     }
     _lastSpoken[text] = now;
     _enqueue(text);
@@ -65,7 +77,7 @@ class TtsService {
 
   Future<void> stop() async {
     _queue.clear();
-    _lastSpoken.clear(); // FIX: xóa cooldown stale — không để session cũ ảnh hưởng session sau
+    _lastSpoken.clear(); 
     await _tts.stop();
     _isSpeaking = false;
   }
@@ -74,10 +86,10 @@ class TtsService {
 
   bool get isSpeaking => _isSpeaking;
 
-  // Bug 8 FIX: async + await — không discard Future
+  
   Future<void> dispose() async {
     _queue.clear();
-    _lastSpoken.clear(); // FIX: giải phóng toàn bộ cooldown cache khi dispose
+    _lastSpoken.clear(); 
     await _tts.stop();
     _isSpeaking = false;
   }
@@ -95,6 +107,12 @@ class TtsService {
   Future<void> _speak(String text) async {
     if (text.trim().isEmpty) return;
     _isSpeaking = true;
-    await _tts.speak(text);
+    try {
+      await _tts.speak(text);
+    } catch (e) {
+      debugPrint('[TtsService] speak error: $e');
+      _isSpeaking = false;
+      _processQueue();
+    }
   }
 }

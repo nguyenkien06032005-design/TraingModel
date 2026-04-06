@@ -8,6 +8,6 @@ class LoadModelUsecase implements UseCase<void, NoParams> {
   @override
   Future<void> call(NoParams params) => _repository.loadModel();
 
-  /// Shortcut — gọi không cần truyền params
+  
   Future<void> load() => _repository.loadModel();
 }

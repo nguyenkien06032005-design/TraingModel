@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
-/// Kết quả letterbox: tensor đã sẵn sàng cho model + metadata để un-letterbox
+
 class LetterboxResult {
   final Float32List
-      inputTensor; // flattened [H, W, 3] = [inputSize*inputSize*3]
-  final double scale; // tỉ lệ scale từ ảnh đã xoay → inputSize×inputSize
-  final double padLeft; // pixel padding bên trái (normalized 0→1)
-  final double padTop; // pixel padding phía trên (normalized 0→1)
-  final int origWidth; // width ảnh ĐÃ XOÁ (sau rotate, trước letterbox)
+      inputTensor; 
+  final double scale; 
+  final double padLeft; 
+  final double padTop; 
+  final int origWidth; 
   final int origHeight;
 
   const LetterboxResult({
@@ -27,32 +27,32 @@ class ImageConverter {
     required List<Uint8List> planes,
     required List<int> rowStrides,
     required List<int> pixelStrides,
-    required int srcWidth, // camera frame width (landscape)
-    required int srcHeight, // camera frame height (landscape)
-    required int inputSize, // 640
-    required int rotationDegrees, // 90, 180, 270 (or 0)
-    Float32List? reuseBuffer, // reuse từ frame trước
+    required int srcWidth, 
+    required int srcHeight, 
+    required int inputSize, 
+    required int rotationDegrees, 
+    Float32List? reuseBuffer, 
   }) {
-    // ── 1. Tính kích thước sau khi xoay ───────────────────────────────────
+    
     final bool swapDims = rotationDegrees == 90 || rotationDegrees == 270;
     final int rotW = swapDims ? srcHeight : srcWidth;
     final int rotH = swapDims ? srcWidth : srcHeight;
 
-    // ── 2. Letterbox geometry ──────────────────────────────────────────────
+    
     final double scale = inputSize / (rotW > rotH ? rotW : rotH);
     final int scaledW = (rotW * scale).round().clamp(1, inputSize);
     final int scaledH = (rotH * scale).round().clamp(1, inputSize);
     final int padL = (inputSize - scaledW) ~/ 2;
     final int padT = (inputSize - scaledH) ~/ 2;
 
-    // ── 3. Alloc / reuse output buffer ────────────────────────────────────
+    
     final int tensorLen = inputSize * inputSize * 3;
     final Float32List tensor =
         (reuseBuffer != null && reuseBuffer.length == tensorLen)
             ? reuseBuffer
             : Float32List(tensorLen);
 
-    // ── 4. YUV plane pointers ──────────────────────────────────────────────
+    
     final Uint8List yPlane = planes[0];
     final Uint8List uPlane = planes[1];
     final Uint8List vPlane = planes[2];
@@ -60,20 +60,20 @@ class ImageConverter {
     final int uvStride = rowStrides[1];
     final int uvPixStride = pixelStrides[1];
     final bool isPlanar =
-        pixelStrides[1] == 1; // true = I420, false = NV12/NV21
+        pixelStrides[1] == 1; 
 
-    // ── 5. Single-pass loop ────────────────────────────────────────────────
-    // Mỗi pixel đầu ra (ox, oy) trong 640×640:
-    //   → tính toạ độ trong rotated image
-    //   → inverse-rotate về original YUV space
-    //   → tra bảng YUV, convert RGB, normalize → tensor
+    
+    
+    
+    
+    
 
-    const double gray = 114.0 / 255.0; // padding YOLO standard
+    const double gray = 114.0 / 255.0; 
     int outIdx = 0;
 
     for (int oy = 0; oy < inputSize; oy++) {
       for (int ox = 0; ox < inputSize; ox++) {
-        // Trong vùng padding → xám YOLO
+        
         final int lx = ox - padL;
         final int ly = oy - padT;
 
@@ -85,19 +85,19 @@ class ImageConverter {
           continue;
         }
 
-        // Back-project về toạ độ rotated image [0..rotW) × [0..rotH)
-        // Dùng round() giống copyResize linear để nhất quán
+        
+        
         final int rx = ((lx / scale) + 0.5).toInt().clamp(0, rotW - 1);
         final int ry = ((ly / scale) + 0.5).toInt().clamp(0, rotH - 1);
 
-        // Inverse-rotate → original sensor coords (srcX, srcY)
+        
         int srcX, srcY;
         switch (rotationDegrees) {
-          case 90: // CW 90: rotated(x,y) = (srcH-1-srcY, srcX) → inv: srcX=ry, srcY=srcH-1-rx
+          case 90: 
             srcX = ry;
             srcY = srcHeight - 1 - rx;
             break;
-          case 270: // CW 270 (= CCW 90): rotated(x,y) = (srcY, srcW-1-srcX) → inv: srcX=srcW-1-ry, srcY=rx
+          case 270: 
             srcX = srcWidth - 1 - ry;
             srcY = rx;
             break;
@@ -105,20 +105,20 @@ class ImageConverter {
             srcX = srcWidth - 1 - rx;
             srcY = srcHeight - 1 - ry;
             break;
-          default: // 0°
+          default: 
             srcX = rx;
             srcY = ry;
         }
 
-        // YUV lookup
+        
         final int yIdx = srcY * yStride + srcX;
         final int uvRow = srcY ~/ 2;
         final int uvCol = srcX ~/ 2;
         final int uvIdx = isPlanar
-            ? uvRow * uvStride + uvCol // I420 planar
-            : uvRow * uvStride + uvCol * uvPixStride; // NV12/NV21 interleaved
+            ? uvRow * uvStride + uvCol 
+            : uvRow * uvStride + uvCol * uvPixStride; 
 
-        // Bounds check (thiết bị lạ có stride khác nhau)
+        
         if (yIdx >= yPlane.length ||
             uvIdx >= uPlane.length ||
             uvIdx >= vPlane.length) {
@@ -133,7 +133,7 @@ class ImageConverter {
         final int uu = uPlane[uvIdx] - 128;
         final int vv = vPlane[uvIdx] - 128;
 
-        // BT.601 YCbCr → RGB, clamp, normalize [0,1]
+        
         tensor[outIdx] = (yy + 1.402 * vv).clamp(0, 255) / 255.0;
         tensor[outIdx + 1] =
             (yy - 0.344136 * uu - 0.714136 * vv).clamp(0, 255) / 255.0;
@@ -195,8 +195,8 @@ class ImageConverter {
     );
   }
 
-  // ── Legacy: YUV420 → img.Image (giữ lại để tương thích nếu cần) ─────────
-  // Không dùng trong pipeline chính nữa — chỉ dùng nếu cần debug snapshot
+  
+  
 
   static img.Image convertYuv420(
     List<Uint8List> planes,
@@ -254,8 +254,8 @@ class ImageConverter {
         order: img.ChannelOrder.rgb);
   }
 
-  // file: lib/core/utils/image_converter.dart
-// Chỉ sửa phần _convertSemiPlanar — toàn bộ phần còn lại giữ nguyên
+  
+
 
   static img.Image _convertSemiPlanar(
     List<Uint8List> planes,
@@ -268,17 +268,17 @@ class ImageConverter {
     final yPlane = planes[0];
     final uPlane = planes[1];
     final vPlane = planes[2];
-    // Bug 19 FIX: Dùng rowStrides[0] cho Y plane thay vì width
-    // Thiết bị có padded stride (e.g. 768 cho width=720) sẽ bị diagonal shear
-    // nếu dùng y * w + x
-    final yStr = rowStrides[0]; // ← FIX: was hardcoded to w
+    
+    
+    
+    final yStr = rowStrides[0]; 
     final uvStr = rowStrides[1];
     final uvPxStr = pixelStrides[1];
     int out = 0;
 
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        final yIndex = y * yStr + x; // Bug 19 FIX: yStr not w
+        final yIndex = y * yStr + x; 
         final uvIndex = (y ~/ 2) * uvStr + (x ~/ 2) * uvPxStr;
 
         if (yIndex >= yPlane.length ||
@@ -308,14 +308,14 @@ class ImageConverter {
     );
   }
 
-  // ── Un-letterbox: model output box → normalized original image coords ──────
+  
   static ({double left, double top, double width, double height})
       unLetterboxBox({
     required double cx,
     required double cy,
     required double bw,
     required double bh,
-    required double padLeft, // từ LetterboxResult (normalized)
+    required double padLeft, 
     required double padTop,
     required double scale,
     required int origWidth,

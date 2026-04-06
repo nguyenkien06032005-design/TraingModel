@@ -13,15 +13,15 @@ class CameraService {
   int _busyDropCount = 0;
   int _throttleDropCount = 0;
 
-  // P2: Control FPS an toàn qua time
+  
   DateTime _lastFrameTime = DateTime.now();
-  // Time gap per frame theo `activeInferenceFps`: 1000/4 = 250ms
+  
   static const int _minFrameMs = 1000 ~/ AppConstants.activeInferenceFps;
 
-  // Native buffer lock - DROP FRAME ngay tức khắc nếu true
+  
   bool _isProcessingFrame = false;
 
-  // Guard tránh double-init khi lifecycle events chồng nhau
+  
   bool _isInitializing = false;
   bool _isDisposing = false;
   Future<void>? _disposeFuture;
@@ -37,14 +37,14 @@ class CameraService {
       _cameras.isNotEmpty ? _cameras[_currentIndex].sensorOrientation : 0;
   int get rotationDegrees => _rotationDegrees;
 
-  // ── Initialize ─────────────────────────────────────────────────────────────
+  
 
   Future<void> initialize({int cameraIndex = 0}) async {
     final pendingDispose = _disposeFuture;
     if (pendingDispose != null) {
       await pendingDispose;
     }
-    // P0-FIX-1: Guard tránh race condition khi lifecycle gọi initialize() 2 lần
+    
     if (_isInitializing) {
       debugPrint('[CameraService] initialize: already in progress, skip');
       return;
@@ -62,12 +62,12 @@ class CameraService {
   }
 
   Future<void> _setupController(CameraDescription camera) async {
-    // Dọn dẹp controller cũ theo đúng thứ tự:
-    // stopImageStream → dispose (P1-FIX-4: đúng thứ tự dispose)
+    
+    
     final old = _controller;
     _streamGeneration++;
     _isProcessingFrame = false;
-    _controller = null; // null trước để callback stream không forward nữa
+    _controller = null; 
     if (old != null) {
       try {
         if (old.value.isStreamingImages) await old.stopImageStream();
@@ -77,18 +77,18 @@ class CameraService {
       }
     }
 
-    // FIX: Front camera sensor đã mirror ngang theo phần cứng.
-    // Nếu dùng công thức (360 - orientation) cho cả 2 loại camera, frame front
-    // bị xoay sai chiều → bounding box lệch. Front cần đảo ngược chiều xoay.
+    
+    
+    
     final bool isFront =
         camera.lensDirection == CameraLensDirection.front;
     _rotationDegrees = isFront
-        ? camera.sensorOrientation % 360          // front: thuận chiều sensor
-        : (360 - camera.sensorOrientation) % 360; // back: ngược chiều sensor
+        ? camera.sensorOrientation % 360          
+        : (360 - camera.sensorOrientation) % 360; 
 
     final ctrl = CameraController(
       camera,
-      ResolutionPreset.medium, // FIX P3: Từ Low -> Medium (720x480) giúp model 640x640 không phải upscale
+      ResolutionPreset.medium, 
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
@@ -100,7 +100,7 @@ class CameraService {
     );
   }
 
-  // ── Stream ─────────────────────────────────────────────────────────────────
+  
 
   void startImageStream({
     required void Function(CameraImage, void Function()) onFrame,
@@ -128,7 +128,7 @@ class CameraService {
           _streamGeneration != streamGeneration) {
         return;
       }
-      // 🚨 BẢO VỆ BUFFER NGUYÊN TỬ: Drop frame ngay và giải phóng native buffer
+      
       if (_isProcessingFrame) {
         _busyDropCount++;
         if (kDebugMode && _busyDropCount % 30 == 0) {
@@ -150,7 +150,7 @@ class CameraService {
       _lastFrameTime = now;
       
       onFrame(image, () {
-        _isProcessingFrame = false; // Thả lock
+        _isProcessingFrame = false; // Tháº£ lock
       });
     }).catchError((Object error, StackTrace stackTrace) {
       debugPrint('[CameraService] startImageStream error: $error');
@@ -179,7 +179,7 @@ class CameraService {
     await _setupController(_cameras[_currentIndex]);
   }
 
-  // P1-FIX-4: dispose đúng thứ tự — stopImageStream trước, dispose sau
+  
   Future<void> dispose() async {
     final pendingDispose = _disposeFuture;
     if (pendingDispose != null) {
@@ -193,7 +193,9 @@ class CameraService {
     _streamGeneration++;
     _isProcessingFrame = false;
 
-    final future = () async {
+    final completer = Completer<void>();
+    _disposeFuture = completer.future;
+    try {
       try {
         if (controller?.value.isStreamingImages ?? false) {
           await controller!.stopImageStream();
@@ -206,17 +208,12 @@ class CameraService {
         await controller?.dispose();
       } catch (e) {
         debugPrint('[CameraService] dispose controller error: $e');
-      } finally {
-        _isProcessingFrame = false;
-        _isDisposing = false;
       }
-    }();
-
-    _disposeFuture = future;
-    try {
-      await future;
     } finally {
+      _isProcessingFrame = false;
+      _isDisposing = false;
       _disposeFuture = null;
+      completer.complete();
     }
   }
 }

@@ -26,7 +26,7 @@ class SettingsScreen extends StatelessWidget {
             children: [
               _SectionHeader(title: 'Giọng nói'),
 
-              // Bật/tắt giọng nói
+              
               SwitchListTile(
                 title: const Text('Thông báo âm thanh'),
                 subtitle: const Text('Đọc cảnh báo khi phát hiện vật thể'),
@@ -39,7 +39,7 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
 
-              // Tốc độ đọc
+              
               ListTile(
                 title: const Text('Tốc độ đọc'),
                 subtitle: Slider(
@@ -60,7 +60,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Ngôn ngữ TTS
+              
               ListTile(
                 title: const Text('Ngôn ngữ'),
                 trailing: DropdownButton<String>(
@@ -82,7 +82,7 @@ class SettingsScreen extends StatelessWidget {
               const Divider(height: 32),
               _SectionHeader(title: 'Phát hiện vật thể'),
 
-              // Ngưỡng confidence
+              
               ListTile(
                 title: const Text('Ngưỡng độ tin cậy'),
                 subtitle: Slider(
@@ -102,7 +102,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Hiện panel confidence
+              
               SwitchListTile(
                 title: const Text('Hiện bảng kết quả'),
                 subtitle:

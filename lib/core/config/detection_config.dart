@@ -1,10 +1,10 @@
-// file: lib/core/config/detection_config.dart
+
 
 import '../constants/app_constants.dart';
 
-/// Mutable runtime config cho inference pipeline.
-/// Registered singleton trong DI — DetectionLocalDatasourceImpl và
-/// SettingsBloc cùng giữ reference đến 1 instance.
+
+
+
 class DetectionConfig {
   double _confidenceThreshold;
   double _iouThreshold;

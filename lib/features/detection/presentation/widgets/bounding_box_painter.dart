@@ -1,4 +1,4 @@
-// file: lib/features/detection/presentation/widgets/bounding_box_painter.dart
+
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/detection_object.dart';
@@ -157,17 +157,17 @@ class BoundingBoxPainter extends CustomPainter {
   final List<SmoothedBox> boxes;
   final bool              mirrorHorizontal;
 
-  // Bug 13 FIX: static final — allocate once, share safely (painting là single-thread)
-  // Trước đây: 3 Paint objects mới mỗi constructor call (6 lần/giây)
+  
+  
   static final _strokePaint = Paint()..style = PaintingStyle.stroke;
   static final _cornerPaint = Paint()
     ..style    = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
   static final _labelPaint = Paint()..style = PaintingStyle.fill;
 
-  // Bug 3 FIX: Static cache nhưng bounded — dispose TextPainter khi evict
-  // Giới hạn 100 entries (nhiều hơn COCO 80 classes) tránh memory leak vô hạn
-  static final Map<String, TextPainter> _textCache = {};
+  
+  
+  final Map<String, TextPainter> _textCache = {};
   static const int _maxCacheEntries = 100;
 
   BoundingBoxPainter({
@@ -267,15 +267,15 @@ class BoundingBoxPainter extends CustomPainter {
     tp.paint(canvas, Offset(rect.left + 5, lt + 2.5));
   }
 
-  // Bug 3 FIX: Bounded cache với proper eviction + dispose
-  static TextPainter _getOrCreatePainter(String label) {
+  
+  TextPainter _getOrCreatePainter(String label) {
     if (_textCache.containsKey(label)) return _textCache[label]!;
 
-    // Evict khi đầy: xoá nửa entries cũ nhất (FIFO approximation)
+    
     if (_textCache.length >= _maxCacheEntries) {
       final toEvict = _textCache.keys.take(_maxCacheEntries ~/ 2).toList();
       for (final key in toEvict) {
-        _textCache[key]!.dispose(); // dispose native resource
+        _textCache[key]!.dispose();
         _textCache.remove(key);
       }
     }
@@ -294,6 +294,15 @@ class BoundingBoxPainter extends CustomPainter {
 
     _textCache[label] = painter;
     return painter;
+  }
+
+  @override
+  void dispose() {
+    for (final painter in _textCache.values) {
+      painter.dispose();
+    }
+    _textCache.clear();
+    super.dispose();
   }
 
   Color _colorForLabel(String label) {

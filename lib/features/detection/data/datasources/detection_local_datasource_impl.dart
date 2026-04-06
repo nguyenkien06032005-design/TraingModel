@@ -1,5 +1,5 @@
-// file: lib/features/detection/data/datasources/detection_local_datasource_impl.dart
-// (File này được viết lại toàn bộ — cover cả Bug 1, 4, 14, 16, 17)
+
+
 
 import 'dart:isolate';
 import 'dart:math';
@@ -20,7 +20,7 @@ import '../../../../core/utils/image_converter.dart';
 class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
   DetectionLocalDatasourceImpl(this._config);
 
-  // Bug 4 FIX: Mutable runtime config thay vì AppConstants compile-time constant
+  
   final DetectionConfig _config;
 
   Interpreter? _interpreter;
@@ -105,14 +105,16 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _mainReceivePort = ReceivePort();
     _isolate = await Isolate.spawn(_isolateEntry, _mainReceivePort!.sendPort);
     _isolateSendPort = await _mainReceivePort!.first as SendPort;
-
-    // Bug 16 FIX: Gửi labels + static config 1 lần lúc spawn
-    // thay vì copy 80 strings mỗi frame (~480 string copies/giây)
+    final ackPort = ReceivePort();
     _isolateSendPort!.send(_IsolateInitMsg(
       labels:      List.unmodifiable(_labels),
       inputSize:   AppConstants.inputSize,
       outputShape: List.unmodifiable(_outputShape),
+      ackPort:     ackPort.sendPort,
     ));
+    await ackPort.first;
+    ackPort.close();
+    if (kDebugMode) debugPrint('[DS] Isolate ready + init confirmed');
   }
 
   Future<void> _killAndRespawnIsolate() async {
@@ -124,7 +126,7 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _isolate = null;
     _mainReceivePort = null;
     _isolateSendPort = null;
-    // _spawnIsolate tự gửi lại init msg → isolate mới luôn có đủ data
+    
     await _spawnIsolate();
     if (kDebugMode) debugPrint('[DS] Isolate respawned');
   }
@@ -155,7 +157,7 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
         imageHeight:         image.height,
         interpreterAddress:  _interpreter!.address,
         rotationDegrees:     rotationDegrees,
-        // Bug 4 FIX: Đọc live config thay vì compile-time constant
+        
         confidenceThreshold: _config.confidenceThreshold,
         iouThreshold:        _config.iouThreshold,
         maxDetections:       _config.maxDetections,
@@ -199,6 +201,19 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
   @override
   Future<void> closeModel() async {
+    if (_isolateSendPort != null) {
+      final shutdownAck = ReceivePort();
+      _isolateSendPort!.send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
+      await shutdownAck.first.timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () {
+          debugPrint('[DS] isolate shutdown timeout — force killing');
+          return null;
+        },
+      ).catchError((_) => null);
+      shutdownAck.close();
+    }
+
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _mainReceivePort?.close();
@@ -208,12 +223,13 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _interpreter = null;
     _modelLoaded = false;
     _consecutiveTimeouts = 0;
+    if (kDebugMode) debugPrint('[DS] model closed, resources freed');
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ISOLATE GLOBALS — cache 1 lần từ _IsolateInitMsg
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 Interpreter?              _cachedInterpreter;
 int                       _cachedAddress = 0;
@@ -222,7 +238,7 @@ Uint8List?                _cachedOutputBytes;
 Float32List?              _cachedOutputFloats;
 int                       _cachedOutputLen = 0;
 
-// Bug 16 FIX: Nhận 1 lần lúc spawn thay vì mỗi frame
+
 List<String>? _initLabels;
 int           _initInputSize  = 0;
 List<int>     _initOutputShape = const [];
@@ -235,15 +251,26 @@ void _isolateEntry(SendPort mainSendPort) {
       _initLabels      = msg.labels;
       _initInputSize   = msg.inputSize;
       _initOutputShape = msg.outputShape;
+      msg.ackPort.send(const _IsolateInitAck());
       if (kDebugMode) {
         debugPrint(
-          '[Isolate] init received: ${msg.labels.length} labels '
-          'inputSize=${msg.inputSize} shape=${msg.outputShape}',
+          '[Isolate] init received + ACK sent: ${msg.labels.length} labels',
         );
       }
+    } else if (msg is _IsolateShutdown) {
+      try {
+        _cachedInterpreter?.close();
+        _cachedInterpreter = null;
+        if (kDebugMode) debugPrint('[Isolate] interpreter closed on shutdown');
+      } catch (e) {
+        debugPrint('[Isolate] error closing interpreter: $e');
+      }
+      msg.replyPort.send(const _IsolateInitAck());
+      jobPort.close();
+      Isolate.exit();
     } else if (msg is _InferenceJob) {
       if (_initLabels == null) {
-        debugPrint('[Isolate] ERROR: init msg not yet received — dropping frame');
+        debugPrint('[Isolate] ERROR: init not received — dropping frame');
         msg.replyPort.send('ERROR: not initialized');
         return;
       }
@@ -258,7 +285,7 @@ void _processJob(_InferenceJob job) {
   final swInfer = Stopwatch();
   final swParse = Stopwatch();
   try {
-    // Cache interpreter theo address
+    
     if (_cachedAddress != job.interpreterAddress) {
       _cachedInterpreter?.close();
       _cachedInterpreter = Interpreter.fromAddress(job.interpreterAddress);
@@ -272,7 +299,7 @@ void _processJob(_InferenceJob job) {
       for (final t in job.planeBytes) t.materialize().asUint8List(),
     ];
 
-    // Single-pass YUV → rotate → letterbox → Float32
+    
     final lb = ImageConverter.yuvToLetterboxedFloat32(
       planes:          planes,
       rowStrides:      job.planeRowStrides,
@@ -321,8 +348,8 @@ void _processJob(_InferenceJob job) {
 }
 
 void _ensureOutputFlat() {
-  // FIX: Validate shape trước khi truy cập index — tránh RangeError khi model
-  // khác chuẩn hoặc load lỗi một phần (e.g. shape=[84,8400] thay vì [1,8400,84])
+  
+  
   if (_initOutputShape.length < 3) {
     throw StateError(
       '[Isolate] Output shape invalid: $_initOutputShape — '
@@ -343,11 +370,11 @@ void _ensureOutputFlat() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PARSE + UN-LETTERBOX
-// Bug 1 FIX:  Detect transposed vs non-transposed từ shape
-// Bug 17 FIX: Dùng AppConstants.yoloHasObjectness thay vì infer từ label count
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
 
 List<Map<String, dynamic>> _parseFlat({
   required Float32List       flat,
@@ -360,7 +387,7 @@ List<Map<String, dynamic>> _parseFlat({
   final inputSize = _initInputSize;
   final shape = _initOutputShape;
 
-  // FIX: Guard shape trước khi truy cập index cố định — tránh RangeError isolate
+  
   if (shape.length < 3) {
     debugPrint('[Parse] ERROR: shape $shape không đủ 3 chiều — bỏ qua frame');
     return [];
@@ -444,10 +471,10 @@ List<Map<String, dynamic>> _parseFlat({
     ));
   }
 
-  // FIX: Top-k pre-filter trước NMS — giới hạn O(n²) khi confidence threshold thấp
-  // dẫn đến hàng trăm raw boxes (đặc biệt với scene đông vật thể).
-  // maxDetections * 10 là heuristic đủ rộng để NMS hoạt động chính xác.
-  const int nmsTopK = 100; // absolute cap, không phụ thuộc maxDetections
+  
+  
+  
+  const int nmsTopK = 100; 
   if (rawBoxes.length > nmsTopK) {
     rawBoxes.sort((a, b) => b.score.compareTo(a.score));
     rawBoxes.removeRange(nmsTopK, rawBoxes.length);
@@ -518,24 +545,36 @@ class _RawBox {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MESSAGES
-// ═══════════════════════════════════════════════════════════════════════════
 
-/// Bug 16 FIX: Gửi labels + static data 1 lần khi spawn isolate
+
+
+
+
 class _IsolateInitMsg {
   final List<String> labels;
   final int          inputSize;
   final List<int>    outputShape;
+  final SendPort     ackPort;
 
   const _IsolateInitMsg({
     required this.labels,
     required this.inputSize,
     required this.outputShape,
+    required this.ackPort,
   });
 }
 
-/// Per-frame job — chỉ chứa data thực sự thay đổi mỗi frame
+class _IsolateInitAck {
+  const _IsolateInitAck();
+}
+
+class _IsolateShutdown {
+  final SendPort replyPort;
+
+  const _IsolateShutdown({required this.replyPort});
+}
+
+
 class _InferenceJob {
   final SendPort                    replyPort;
   final List<TransferableTypedData> planeBytes;
@@ -545,7 +584,7 @@ class _InferenceJob {
   final int                         imageHeight;
   final int                         interpreterAddress;
   final int                         rotationDegrees;
-  // Bug 4 FIX: Runtime values từ DetectionConfig, có thể thay đổi từ Settings
+  
   final double                      confidenceThreshold;
   final double                      iouThreshold;
   final int                         maxDetections;

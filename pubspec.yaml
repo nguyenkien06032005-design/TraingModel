@@ -12,7 +12,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # --- QUẢN LÝ STATE ---
+  
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
   get_it: ^8.0.3
@@ -21,14 +21,14 @@ dependencies:
   flutter_lints: ^5.0.0
 
 
-  # --- TÍNH NĂNG CHÍNH ---
+  
   flutter_tts: ^4.2.2
   vibration: ^2.0.1
 
-  # --- CAMERA & AI ---
+  
   camera: ^0.10.6
   
-  # Chuyển sang bản chính thức để tránh lỗi "Git repository not found"
+  
   tflite_flutter: ^0.11.0
 
   permission_handler: ^11.3.1

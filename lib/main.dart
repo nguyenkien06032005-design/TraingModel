@@ -12,13 +12,13 @@ import 'injection_container.dart' as di;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Chỉ portrait
+  
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Dependency injection
+  
   await di.init();
 
   runApp(const SafeVisionApp());

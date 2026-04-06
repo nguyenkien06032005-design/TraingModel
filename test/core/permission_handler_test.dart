@@ -1,35 +1,35 @@
-// ignore_for_file: avoid_print
 
-// ============================================================================
-// NOTE ON TESTABILITY:
-//
-// AppPermissionHandler uses static methods that internally call the
-// permission_handler package's `Permission.camera.request()` and
-// `Permission.camera.isGranted`. These are not injectable, making them
-// difficult to unit test without a real device or by using
-// platform-specific test overrides.
-//
-// Recommended improvement for better testability:
-//   1. Wrap Permission calls behind an injectable abstract class:
-//      abstract class PermissionService {
-//        Future<bool> requestCamera();
-//        Future<bool> isCameraGranted();
-//      }
-//   2. Inject it into AppPermissionHandler or the classes that use it.
-//
-// The tests below cover:
-//   - The PermissionException class behavior
-//   - Logic that CAN be tested without platform calls
-//   - Integration-style notes for what needs device testing
-// ============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:safe_vision_app/core/error/exceptions.dart';
 
 void main() {
-  // ══════════════════════════════════════════════════════════════════════════
-  // PermissionException
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('PermissionException', () {
     test('stores message correctly', () {
@@ -55,7 +55,7 @@ void main() {
     });
 
     test('camera denied message matches expected Vietnamese text', () {
-      // Verifies the exact message the handler throws, so callers can match it
+      
       const expectedMsg =
           'Quyền camera bị từ chối. Vui lòng cấp quyền trong Cài đặt.';
       const ex = PermissionException(expectedMsg);
@@ -69,9 +69,9 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Other exceptions (side-by-side parity tests)
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('Exception classes', () {
     test('ModelNotFoundException formats correctly', () {
@@ -98,7 +98,7 @@ void main() {
       expect(ex.toString(), contains('unsupported format'));
     });
 
-    // Each exception type is a distinct class (not interchangeable)
+    
     test('exception types are distinct', () {
       const perm  = PermissionException('x');
       const model = ModelNotFoundException('x');
@@ -114,19 +114,19 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // VoiceHelper (also in core/utils — tested here for coverage completeness)
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('VoiceHelper', () {
-    // Import inline to avoid circular structure — the class is simple enough
-    // to test via its public static output strings directly.
+    
+    
 
     test('modelLoaded returns expected Vietnamese string', () {
-      // We verify the contract so TTS says the right thing on startup
-      // Actual class: VoiceHelper.modelLoaded() => 'Hệ thống sẵn sàng'
-      // (Cannot call without import — tested via integration in TTS layer)
-      // This group documents expected values for reference.
+      
+      
+      
+      
       expect('Hệ thống sẵn sàng', isA<String>());
     });
 

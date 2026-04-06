@@ -1,5 +1,5 @@
-// file: lib/features/detection/presentation/pages/camera_view_page.dart
-// (Cover cả Bug 2, 7, 12 — trước đây dùng setState thay vì ValueNotifier)
+
+
 
 import 'dart:async';
 
@@ -35,13 +35,13 @@ class _CameraViewPageState extends State<CameraViewPage>
 
   bool _cameraReady = false;
 
-  // P2-Fix5: Generation token — mỗi lần switch/start camera, token tăng lên.
-  // Frame sinh ra từ session cũ (đang bay trong DetectionBloc) sẽ bị discard
-  // khi gọi onDone() mà không dispatch event, tránh overlay lóe sai camera.
+  
+  
+  
   int _cameraSession = 0;
 
-  // Bug 12 FIX: ValueNotifier thay vì setState → không rebuild toàn bộ page
-  // mỗi lần có detection (6 lần/giây)
+  
+  
   late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
       ValueNotifier(const []);
   bool _boxNotifierDisposed = false;
@@ -61,7 +61,7 @@ class _CameraViewPageState extends State<CameraViewPage>
     _phase = _LifecyclePhase.disposed;
     WidgetsBinding.instance.removeObserver(this);
     context.read<DetectionBloc>().add(const DetectionStopped());
-    // Explicit TTS stop — DetectionBloc không còn hold TtsBloc reference (Bug 10)
+    
     context.read<TtsBloc>().add(const TtsStop());
     _tracker.clear();
     _clearBoxes();
@@ -77,6 +77,12 @@ class _CameraViewPageState extends State<CameraViewPage>
         break;
 
       case AppLifecycleState.paused:
+        if (_phase == _LifecyclePhase.active) {
+          _phase = _LifecyclePhase.paused;
+          unawaited(_cameraService.stopImageStream());
+        }
+        break;
+
       case AppLifecycleState.detached:
         if (_phase == _LifecyclePhase.active) {
           _phase = _LifecyclePhase.paused;
@@ -104,11 +110,11 @@ class _CameraViewPageState extends State<CameraViewPage>
     }
   }
 
-  // Bug 2 FIX: Request camera permission trước khi initialize
+  
   Future<void> _startCamera() async {
     if (_phase == _LifecyclePhase.disposed) return;
     try {
-      // Request permission — throws PermissionException nếu bị từ chối
+      
       await AppPermissionHandler.requestCamera();
 
       await _cameraService.initialize();
@@ -125,12 +131,12 @@ class _CameraViewPageState extends State<CameraViewPage>
 
   void _startStreaming() {
     if (_phase == _LifecyclePhase.disposed) return;
-    // P2-Fix5: Snapshot session tại thời điểm bắt đầu stream.
-    // Closure giữ giá trị này — frame đến sau khi session thay đổi sẽ bị drop.
+    
+    
     final int session = _cameraSession;
     _cameraService.startImageStream(
       onFrame: (CameraImage image, void Function() onDone) {
-        // Drop frame nếu session đã thay đổi (camera đã switch) hoặc page disposed
+        
         if (session != _cameraSession ||
             !mounted ||
             _phase == _LifecyclePhase.disposed) {
@@ -144,13 +150,13 @@ class _CameraViewPageState extends State<CameraViewPage>
     );
   }
 
-  // Bug 7 FIX: Thêm _phase guard — không chỉ check mounted
+  
   Future<void> _switchCamera() async {
     await _cameraService.stopImageStream();
     if (!mounted || _phase == _LifecyclePhase.disposed) return;
 
-    // P2-Fix5: Tăng session trước khi clear UI — frame cũ đang bay trong bloc
-    // sẽ thấy session mismatch và tự drop (không emit vào boxNotifier)
+    
+    
     _cameraSession++;
 
     setState(() {
@@ -159,14 +165,20 @@ class _CameraViewPageState extends State<CameraViewPage>
     _tracker.clear();
     _clearBoxes();
 
-    await _cameraService.switchCamera();
-    if (!mounted || _phase == _LifecyclePhase.disposed) return;
-
-    setState(() => _cameraReady = true);
-    _startStreaming();
+    try {
+      await _cameraService.switchCamera();
+      if (!mounted || _phase == _LifecyclePhase.disposed) return;
+      setState(() => _cameraReady = true);
+      _startStreaming();
+    } catch (e) {
+      debugPrint('[Page] switchCamera error: $e');
+      if (!mounted || _phase == _LifecyclePhase.disposed) return;
+      setState(() => _cameraReady = false);
+      await _startCamera();
+    }
   }
 
-  // Bug 2 FIX: Dialog với nút mở Settings khi permission bị từ chối
+  
   void _showPermissionDialog(String message) {
     showDialog<void>(
       context: context,
@@ -198,7 +210,7 @@ class _CameraViewPageState extends State<CameraViewPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera preview layer — RepaintBoundary tách repaint
+          
           RepaintBoundary(
             child: _CameraLayer(
               service:     _cameraService,
@@ -206,9 +218,9 @@ class _CameraViewPageState extends State<CameraViewPage>
             ),
           ),
 
-          // Bug 12 FIX: BlocListener (không rebuild) + ValueListenableBuilder (chỉ repaint boxes)
-          // BlocBuilder chỉ rebuild khi state TYPE thay đổi (Loading, Ready, Failure)
-          // DetectionSuccess → KHÔNG rebuild widget tree — chỉ update ValueNotifier
+          
+          
+          
           MultiBlocListener(
             listeners: [
               BlocListener<DetectionBloc, DetectionState>(
@@ -220,10 +232,10 @@ class _CameraViewPageState extends State<CameraViewPage>
                     return;
                   }
                   if (state is DetectionSuccess) {
-                    // P2-Fix5: Chỉ update tracker khi camera đã sẵn sàng.
-                    // Frame in-flight (đã vào DetectionBloc trước khi switch)
-                    // hoàn tất sau khi _cameraReady=false → discard ở đây,
-                    // tránh overlay lóe dữ liệu từ camera cũ.
+                    
+                    
+                    
+                    
                     if (!_cameraReady) return;
                     _setBoxes(_tracker.update(state.detections));
                   } else if (state is DetectionInitial) {
@@ -235,7 +247,7 @@ class _CameraViewPageState extends State<CameraViewPage>
             ],
             child: BlocBuilder<DetectionBloc, DetectionState>(
               buildWhen: (prev, curr) {
-                // Không bao giờ rebuild vì DetectionSuccess
+                
                 if (curr is DetectionSuccess) return false;
                 return curr.runtimeType != prev.runtimeType;
               },
@@ -309,7 +321,7 @@ class _CameraViewPageState extends State<CameraViewPage>
 
 enum _LifecyclePhase { active, paused, disposed }
 
-// ── Detection overlay ─────────────────────────────────────────────────────
+
 
 class _DetectionOverlay extends StatelessWidget {
   final ValueNotifier<List<SmoothedBox>> boxNotifier;
@@ -329,7 +341,7 @@ class _DetectionOverlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Bug 12 FIX: ValueListenableBuilder — chỉ CustomPaint repaint, không rebuild stack
+        
         RepaintBoundary(
           child: ValueListenableBuilder<List<SmoothedBox>>(
             valueListenable: boxNotifier,
@@ -397,7 +409,7 @@ class _DetectionOverlay extends StatelessWidget {
   }
 }
 
-// ── Camera layer ──────────────────────────────────────────────────────────
+
 
 class _CameraLayer extends StatelessWidget {
   final CameraService service;
@@ -422,7 +434,7 @@ class _CameraLayer extends StatelessWidget {
   }
 }
 
-// ── Icon button ───────────────────────────────────────────────────────────
+
 
 class _IconBtn extends StatelessWidget {
   final IconData   icon;

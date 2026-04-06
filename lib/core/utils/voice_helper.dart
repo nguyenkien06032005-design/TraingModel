@@ -1,4 +1,4 @@
-/// Các câu cảnh báo tiếng Việt chuẩn, dùng cho TTS
+
 class VoiceHelper {
   VoiceHelper._();
 

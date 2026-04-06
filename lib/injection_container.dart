@@ -1,4 +1,4 @@
-// file: lib/injection_container.dart
+
 
 import 'package:get_it/get_it.dart';
 import 'package:safe_vision_app/features/tts/presentation/bloc/tts_event.dart';
@@ -32,39 +32,39 @@ Future<void> init() async {
   sl.registerSingleton<SettingsRepository>(
     SettingsRepositoryImpl(sl<LocalStorageService>()),
   );
-  // ── TTS ─────────────────────────────────────────────────────────────────
+  
   final ttsService = TtsService();
-  await ttsService.initialize(); // Khởi tạo với all defaults
+  await ttsService.initialize(); 
   sl.registerSingleton<TtsService>(ttsService);
 
   sl.registerSingleton<TtsRepository>(TtsRepositoryImpl(sl<TtsService>()));
   sl.registerSingleton(SpeakWarningUsecase(sl<TtsRepository>()));
   sl.registerSingleton(StopSpeakingUsecase(sl<TtsRepository>()));
-  sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>())); // Bug 9 FIX
-  sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));  // Bug 11 FIX
+  sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>())); 
+  sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));  
 
   sl.registerSingleton(TtsBloc(
     speakWarning:  sl(),
     stopSpeaking:  sl(),
-    pauseSpeaking: sl<PauseSpeakingUsecase>(), // Bug 9 FIX
+    pauseSpeaking: sl<PauseSpeakingUsecase>(), 
     settingsRepository: sl<SettingsRepository>(),
   ));
 
-  // ── Detection Config (core — shared giữa Detection và Settings) ──────────
-  // Bug 4 FIX: Singleton DetectionConfig — cả datasource và settings đều ref cùng instance
+  
+  
   sl.registerSingleton(DetectionConfig());
 
-  // ── Detection ────────────────────────────────────────────────────────────
+  
   sl.registerSingleton<DetectionLocalDatasource>(
-    // Bug 4 FIX: Inject DetectionConfig vào datasource
+    
     DetectionLocalDatasourceImpl(sl<DetectionConfig>()),
   );
   sl.registerSingleton<DetectionRepository>(DetectionRepositoryImpl(sl()));
   sl.registerSingleton(LoadModelUsecase(sl<DetectionRepository>()));
   sl.registerSingleton(DetectionObjectFromFrame(sl<DetectionRepository>()));
 
-  // Bug 10 FIX: DetectionBloc không còn nhận TtsBloc
-  // Thay bằng callback — page là orchestrator, không phải bloc
+  
+  
   sl.registerFactory(() => DetectionBloc(
     loadModel:       sl(),
     detectFromFrame: sl(),
@@ -73,20 +73,20 @@ Future<void> init() async {
       required bool immediate,
       required bool withVibration,
     }) {
-      // TtsBloc singleton luôn available khi factory được gọi
+      
       sl<TtsBloc>().add(
         TtsSpeak(text, immediate: immediate, withVibration: withVibration),
       );
     },
   ));
 
-  // ── Camera ───────────────────────────────────────────────────────────────
+  
   sl.registerSingleton(CameraService());
 
-  // ── Settings ─────────────────────────────────────────────────────────────
+  
 
-  // Bug 11 FIX: SettingsBloc nhận ConfigureTtsUsecase thay vì TtsService
-  // Bug 4 FIX:  SettingsBloc nhận DetectionConfig để update live threshold
+  
+  
   sl.registerFactory(() => SettingsBloc(
     sl<SettingsRepository>(),
     sl<ConfigureTtsUsecase>(),

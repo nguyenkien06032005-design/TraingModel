@@ -8,12 +8,12 @@ abstract class TtsEvent extends Equatable {
 class TtsSpeak extends TtsEvent {
   final String text;
   final bool immediate;
-  final bool withVibration; // ← thêm field này
+  final bool withVibration; 
 
   const TtsSpeak(
     this.text, {
     this.immediate = false,
-    this.withVibration = false, // ← default false
+    this.withVibration = false, 
   });
 
   @override

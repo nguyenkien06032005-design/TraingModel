@@ -10,7 +10,7 @@ import 'package:safe_vision_app/features/detection/presentation/bloc/detection_b
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_event.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_state.dart';
 
-// ── Mocks ─────────────────────────────────────────────────────────────────
+
 
 class MockLoadModelUsecase extends Mock implements LoadModelUsecase {}
 
@@ -18,7 +18,7 @@ class MockDetectFromFrame extends Mock implements DetectionObjectFromFrame {}
 
 class MockCameraImage extends Mock implements CameraImage {}
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+
 
 DetectionObject _safeObject({
   String label = 'person',
@@ -65,7 +65,7 @@ void main() {
     mockCameraImage = MockCameraImage();
   });
 
-  // ✅ NEW buildBloc (callback-based)
+  
   DetectionBloc buildBloc({
     DetectionWarningCallback? onWarning,
   }) =>
@@ -76,9 +76,9 @@ void main() {
             ({required text, required immediate, required withVibration}) {},
       );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Initial state
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   test('initial state is DetectionInitial', () {
     final bloc = buildBloc();
@@ -86,9 +86,9 @@ void main() {
     bloc.close();
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // DetectionStarted
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('DetectionStarted', () {
     blocTest<DetectionBloc, DetectionState>(
@@ -119,9 +119,9 @@ void main() {
     );
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // DetectionStopped
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   blocTest<DetectionBloc, DetectionState>(
     'DetectionStopped → back to Initial',
@@ -131,9 +131,9 @@ void main() {
     expect: () => [const DetectionInitial()],
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Frame: empty detections
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   blocTest<DetectionBloc, DetectionState>(
     'empty detections → success with empty list',
@@ -153,9 +153,9 @@ void main() {
     ],
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Frame: with detections
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   blocTest<DetectionBloc, DetectionState>(
     'single detection',
@@ -171,14 +171,14 @@ void main() {
     expect: () => [isA<DetectionSuccess>()],
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 🔥 Callback behavior (THAY cho TTS test)
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
-  // P3-Fix7: Dùng nullable thay vì late — tránh LateInitializationError giòn
-  // nếu callback không được gọi (test failure rõ ràng hơn là LateError).
-  // setUp() reset về null trước mỗi test trong group, loại bỏ phụ thuộc
-  // trạng thái giữa 2 blocTest.
+  
+  
+  
+  
   group('Callback behavior', () {
     String? capturedText;
     bool? capturedImmediate;
@@ -231,8 +231,8 @@ void main() {
           bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
       expect: () => [isA<DetectionSuccess>()],
       verify: (_) {
-        // P3-Fix7: verify callback được gọi (capturedImmediate != null)
-        // trước khi check giá trị — fail rõ ràng nếu callback im lặng
+        
+        
         expect(capturedImmediate, isNotNull,
             reason: 'callback phải được gọi với safe object');
         expect(capturedImmediate, isFalse,
@@ -241,9 +241,9 @@ void main() {
     );
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Processing lock
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   blocTest<DetectionBloc, DetectionState>(
     'drops second frame while processing',
@@ -270,9 +270,9 @@ void main() {
     },
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Error handling
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   blocTest<DetectionBloc, DetectionState>(
     'handles exception silently',

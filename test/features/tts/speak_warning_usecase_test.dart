@@ -11,7 +11,7 @@ import 'package:safe_vision_app/features/tts/presentation/bloc/tts_bloc.dart';
 import 'package:safe_vision_app/features/tts/presentation/bloc/tts_event.dart';
 import 'package:safe_vision_app/features/tts/presentation/bloc/tts_state.dart';
 
-// ── Mock ──────────────────────────────────────────────────────────────────
+
 
 class MockTtsRepository extends Mock implements TtsRepository {}
 class MockSettingsRepository extends Mock implements SettingsRepository {}
@@ -27,9 +27,9 @@ void main() {
         .thenAnswer((_) async => true);
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // SpeakWarningUsecase
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('SpeakWarningUsecase', () {
     late SpeakWarningUsecase usecase;
@@ -38,7 +38,7 @@ void main() {
       usecase = SpeakWarningUsecase(mockRepo);
     });
 
-    // .call(text) → repository.speakWarning(text)
+    
     test('call() delegates to repository.speakWarning()', () async {
       const text = 'Phát hiện người đi bộ phía trước, gần';
       when(() => mockRepo.speakWarning(text)).thenAnswer((_) async {});
@@ -48,7 +48,7 @@ void main() {
       verify(() => mockRepo.speakWarning(text)).called(1);
     });
 
-    // .immediate(text) → repository.speakImmediate(text)
+    
     test('immediate() delegates to repository.speakImmediate()', () async {
       const text = 'Cảnh báo! Người đi bộ rất gần';
       when(() => mockRepo.speakImmediate(text)).thenAnswer((_) async {});
@@ -58,7 +58,7 @@ void main() {
       verify(() => mockRepo.speakImmediate(text)).called(1);
     });
 
-    // .call() does NOT call speakImmediate
+    
     test('call() does not trigger speakImmediate', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async {});
 
@@ -67,7 +67,7 @@ void main() {
       verifyNever(() => mockRepo.speakImmediate(any()));
     });
 
-    // .immediate() does NOT call speakWarning
+    
     test('immediate() does not trigger speakWarning', () async {
       when(() => mockRepo.speakImmediate(any())).thenAnswer((_) async {});
 
@@ -76,7 +76,7 @@ void main() {
       verifyNever(() => mockRepo.speakWarning(any()));
     });
 
-    // Exact text is passed through without modification
+    
     test('passes exact text to repository', () async {
       const exactText = 'Phát hiện xe đạp bên trái, trung bình';
       when(() => mockRepo.speakWarning(exactText)).thenAnswer((_) async {});
@@ -86,7 +86,7 @@ void main() {
       verify(() => mockRepo.speakWarning(exactText)).called(1);
     });
 
-    // Exception from repository propagates to caller
+    
     test('call() propagates repository exception', () async {
       when(() => mockRepo.speakWarning(any()))
           .thenThrow(Exception('TTS engine error'));
@@ -101,7 +101,7 @@ void main() {
       expect(() => usecase.immediate('text'), throwsException);
     });
 
-    // Empty string is forwarded as-is (no filtering at usecase level)
+    
     test('forwards empty string to repository', () async {
       when(() => mockRepo.speakWarning('')).thenAnswer((_) async {});
 
@@ -110,7 +110,7 @@ void main() {
       verify(() => mockRepo.speakWarning('')).called(1);
     });
 
-    // Multiple calls are each forwarded individually
+    
     test('multiple calls each delegate separately', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async {});
 
@@ -122,9 +122,9 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // StopSpeakingUsecase
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('StopSpeakingUsecase', () {
     late StopSpeakingUsecase usecase;
@@ -133,7 +133,7 @@ void main() {
       usecase = StopSpeakingUsecase(mockRepo);
     });
 
-    // .call() → repository.stop()
+    
     test('call() delegates to repository.stop()', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
@@ -142,7 +142,7 @@ void main() {
       verify(() => mockRepo.stop()).called(1);
     });
 
-    // Does not call speakWarning or speakImmediate
+    
     test('does not call speak methods', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
@@ -152,14 +152,14 @@ void main() {
       verifyNever(() => mockRepo.speakImmediate(any()));
     });
 
-    // Exception propagates
+    
     test('propagates repository exception', () async {
       when(() => mockRepo.stop()).thenThrow(Exception('stop failed'));
 
       expect(() => usecase(), throwsException);
     });
 
-    // Multiple stop calls are each forwarded
+    
     test('multiple stop calls are each delegated', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
@@ -192,9 +192,9 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TtsBloc — state machine
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('TtsBloc', () {
     late SpeakWarningUsecase speakWarningUsecase;
@@ -214,7 +214,7 @@ void main() {
           settingsRepository: mockSettingsRepository,
         );
 
-    // ── Initial state ──────────────────────────────────────────────────────
+    
 
     test('initial state is TtsInitial', () {
       final bloc = buildBloc();
@@ -222,7 +222,7 @@ void main() {
       bloc.close();
     });
 
-    // ── TtsSpeak (regular, no vibration) ──────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'TtsSpeak (regular) → calls speakWarning and emits TtsSpeaking',
@@ -243,7 +243,7 @@ void main() {
       },
     );
 
-    // ── TtsSpeak immediate ─────────────────────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'TtsSpeak(immediate:true) → calls speakImmediate and emits TtsSpeaking',
@@ -254,7 +254,7 @@ void main() {
       act: (bloc) => bloc.add(const TtsSpeak(
         'Cảnh báo! Rất gần',
         immediate: true,
-        withVibration: false, // vibration tested separately
+        withVibration: false, 
       )),
       expect: () => [const TtsSpeaking('Cảnh báo! Rất gần')],
       verify: (_) {
@@ -263,7 +263,7 @@ void main() {
       },
     );
 
-    // ── TtsStop ────────────────────────────────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'TtsStop → calls repository.stop() and emits TtsStopped',
@@ -278,7 +278,7 @@ void main() {
       },
     );
 
-    // ── TtsPause ──────────────────────────────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'TtsPause → calls repository.pause() and emits TtsPaused',
@@ -295,7 +295,7 @@ void main() {
       },
     );
 
-    // ── Error handling ─────────────────────────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'TtsSpeak emits TtsError when speakWarning throws',
@@ -339,7 +339,7 @@ void main() {
       ],
     );
 
-    // ── Sequence: speak then stop ──────────────────────────────────────────
+    
 
     blocTest<TtsBloc, TtsState>(
       'speak then stop → [TtsSpeaking, TtsStopped]',
@@ -360,9 +360,9 @@ void main() {
     );
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TtsEvent equality (Equatable)
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('TtsEvent equality', () {
     test('TtsSpeak with same params are equal', () {
@@ -392,9 +392,9 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TtsState equality (Equatable)
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   group('TtsState equality', () {
     test('TtsInitial equals TtsInitial', () {
