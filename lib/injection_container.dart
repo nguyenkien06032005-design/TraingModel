@@ -28,6 +28,10 @@ import 'features/settings/presentation/bloc/settings_bloc.dart';
 final sl = GetIt.instance;
 
 Future<void> init() async {
+  sl.registerSingleton<LocalStorageService>(LocalStorageService());
+  sl.registerSingleton<SettingsRepository>(
+    SettingsRepositoryImpl(sl<LocalStorageService>()),
+  );
   // ── TTS ─────────────────────────────────────────────────────────────────
   final ttsService = TtsService();
   await ttsService.initialize(); // Khởi tạo với all defaults
@@ -43,6 +47,7 @@ Future<void> init() async {
     speakWarning:  sl(),
     stopSpeaking:  sl(),
     pauseSpeaking: sl<PauseSpeakingUsecase>(), // Bug 9 FIX
+    settingsRepository: sl<SettingsRepository>(),
   ));
 
   // ── Detection Config (core — shared giữa Detection và Settings) ──────────
@@ -79,14 +84,13 @@ Future<void> init() async {
   sl.registerSingleton(CameraService());
 
   // ── Settings ─────────────────────────────────────────────────────────────
-  sl.registerSingleton(LocalStorageService());
-  sl.registerSingleton<SettingsRepository>(SettingsRepositoryImpl(sl()));
 
   // Bug 11 FIX: SettingsBloc nhận ConfigureTtsUsecase thay vì TtsService
   // Bug 4 FIX:  SettingsBloc nhận DetectionConfig để update live threshold
   sl.registerFactory(() => SettingsBloc(
     sl<SettingsRepository>(),
     sl<ConfigureTtsUsecase>(),
+    sl<StopSpeakingUsecase>(),
     sl<DetectionConfig>(),
   ));
 }

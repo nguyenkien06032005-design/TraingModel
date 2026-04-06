@@ -1,6 +1,8 @@
 // file: lib/features/detection/presentation/pages/camera_view_page.dart
 // (Cover cả Bug 2, 7, 12 — trước đây dùng setState thay vì ValueNotifier)
 
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -42,6 +44,7 @@ class _CameraViewPageState extends State<CameraViewPage>
   // mỗi lần có detection (6 lần/giây)
   late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
       ValueNotifier(const []);
+  bool _boxNotifierDisposed = false;
 
   _LifecyclePhase _phase = _LifecyclePhase.active;
 
@@ -57,14 +60,13 @@ class _CameraViewPageState extends State<CameraViewPage>
   void dispose() {
     _phase = _LifecyclePhase.disposed;
     WidgetsBinding.instance.removeObserver(this);
-    _tracker.clear();
-    _boxNotifier
-      ..value = const []
-      ..dispose(); // dispose ValueNotifier
     context.read<DetectionBloc>().add(const DetectionStopped());
     // Explicit TTS stop — DetectionBloc không còn hold TtsBloc reference (Bug 10)
     context.read<TtsBloc>().add(const TtsStop());
-    _cameraService.dispose();
+    _tracker.clear();
+    _clearBoxes();
+    _disposeBoxes();
+    unawaited(_cameraService.dispose());
     super.dispose();
   }
 
@@ -78,7 +80,7 @@ class _CameraViewPageState extends State<CameraViewPage>
       case AppLifecycleState.detached:
         if (_phase == _LifecyclePhase.active) {
           _phase = _LifecyclePhase.paused;
-          _cameraService.stopImageStream();
+          unawaited(_cameraService.stopImageStream());
         }
         break;
 
@@ -96,7 +98,7 @@ class _CameraViewPageState extends State<CameraViewPage>
       case AppLifecycleState.hidden:
         if (_phase == _LifecyclePhase.active) {
           _phase = _LifecyclePhase.paused;
-          _cameraService.stopImageStream();
+          unawaited(_cameraService.stopImageStream());
         }
         break;
     }
@@ -155,7 +157,7 @@ class _CameraViewPageState extends State<CameraViewPage>
       _cameraReady  = false;
     });
     _tracker.clear();
-    _boxNotifier.value = const [];
+    _clearBoxes();
 
     await _cameraService.switchCamera();
     if (!mounted || _phase == _LifecyclePhase.disposed) return;
@@ -213,16 +215,20 @@ class _CameraViewPageState extends State<CameraViewPage>
                 listenWhen: (_, curr) =>
                     curr is DetectionSuccess || curr is DetectionInitial,
                 listener: (_, state) {
+                  if (_phase == _LifecyclePhase.disposed ||
+                      _boxNotifierDisposed) {
+                    return;
+                  }
                   if (state is DetectionSuccess) {
                     // P2-Fix5: Chỉ update tracker khi camera đã sẵn sàng.
                     // Frame in-flight (đã vào DetectionBloc trước khi switch)
                     // hoàn tất sau khi _cameraReady=false → discard ở đây,
                     // tránh overlay lóe dữ liệu từ camera cũ.
                     if (!_cameraReady) return;
-                    _boxNotifier.value = _tracker.update(state.detections);
+                    _setBoxes(_tracker.update(state.detections));
                   } else if (state is DetectionInitial) {
                     _tracker.clear();
-                    _boxNotifier.value = const [];
+                    _clearBoxes();
                   }
                 },
               ),
@@ -286,6 +292,19 @@ class _CameraViewPageState extends State<CameraViewPage>
       ),
     ],
   );
+
+  void _setBoxes(List<SmoothedBox> boxes) {
+    if (_phase == _LifecyclePhase.disposed || _boxNotifierDisposed) return;
+    _boxNotifier.value = boxes;
+  }
+
+  void _clearBoxes() => _setBoxes(const []);
+
+  void _disposeBoxes() {
+    if (_boxNotifierDisposed) return;
+    _boxNotifierDisposed = true;
+    _boxNotifier.dispose();
+  }
 }
 
 enum _LifecyclePhase { active, paused, disposed }

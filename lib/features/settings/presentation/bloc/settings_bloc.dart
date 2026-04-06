@@ -8,17 +8,20 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/config/detection_config.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../../tts/domain/usecases/configure_tts_usecase.dart';
+import '../../../tts/domain/usecases/stop_speaking_usecase.dart';
 import 'settings_event.dart';
 import 'settings_state.dart';
 
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository  _repository;
   final ConfigureTtsUsecase _configureTts;    // Bug 11 FIX: usecase, không phải TtsService
+  final StopSpeakingUsecase _stopSpeaking;
   final DetectionConfig     _detectionConfig; // Bug 4 FIX: mutable config object
 
   SettingsBloc(
     this._repository,
     this._configureTts,
+    this._stopSpeaking,
     this._detectionConfig,
   ) : super(const SettingsState()) {
     on<SettingsLoaded>(_onLoaded);
@@ -77,6 +80,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setVoiceEnabled(e.enabled);
+    if (!e.enabled) {
+      await _stopSpeaking();
+    }
     // Stop TTS thông qua usecase khi tắt voice
     if (!e.enabled) await _configureTts(); // configure với empty = không đổi gì → OK
     emit(state.copyWith(voiceEnabled: e.enabled));

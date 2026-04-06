@@ -2,6 +2,7 @@ import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'package:safe_vision_app/features/settings/domain/repositories/settings_repository.dart';
 import 'package:safe_vision_app/features/tts/domain/repositories/tts_repository.dart';
 import 'package:safe_vision_app/features/tts/domain/usecases/pause_speaking_usecase.dart';
 import 'package:safe_vision_app/features/tts/domain/usecases/speak_warning_usecase.dart';
@@ -13,12 +14,17 @@ import 'package:safe_vision_app/features/tts/presentation/bloc/tts_state.dart';
 // ── Mock ──────────────────────────────────────────────────────────────────
 
 class MockTtsRepository extends Mock implements TtsRepository {}
+class MockSettingsRepository extends Mock implements SettingsRepository {}
 
 void main() {
   late MockTtsRepository mockRepo;
+  late MockSettingsRepository mockSettingsRepository;
 
   setUp(() {
     mockRepo = MockTtsRepository();
+    mockSettingsRepository = MockSettingsRepository();
+    when(() => mockSettingsRepository.getVoiceEnabled())
+        .thenAnswer((_) async => true);
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -205,6 +211,7 @@ void main() {
           speakWarning: speakWarningUsecase,
           stopSpeaking: stopSpeakingUsecase,
           pauseSpeaking: pauseSpeakingUsecase,
+          settingsRepository: mockSettingsRepository,
         );
 
     // ── Initial state ──────────────────────────────────────────────────────
@@ -299,6 +306,21 @@ void main() {
       build: buildBloc,
       act: (bloc) => bloc.add(const TtsSpeak('test')),
       expect: () => [isA<TtsError>()],
+    );
+
+    blocTest<TtsBloc, TtsState>(
+      'ignores speak requests when voice is disabled',
+      setUp: () {
+        when(() => mockSettingsRepository.getVoiceEnabled())
+            .thenAnswer((_) async => false);
+      },
+      build: buildBloc,
+      act: (bloc) => bloc.add(const TtsSpeak('test')),
+      expect: () => <TtsState>[],
+      verify: (_) {
+        verifyNever(() => mockRepo.speakWarning(any()));
+        verifyNever(() => mockRepo.speakImmediate(any()));
+      },
     );
 
     blocTest<TtsBloc, TtsState>(

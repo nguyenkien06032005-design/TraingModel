@@ -26,7 +26,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   final DetectionWarningCallback _onWarning; // Bug 10 FIX
 
   // Bug 5 FIX: Xoá _lastSpoken — TtsService.speakWarning() owns cooldown
-  Map<String, double> _previousObjects = {};
+  Map<String, List<double>> _previousObjects = {};
 
   // Frame-drop lock: chỉ xử lý 1 frame tại một thời điểm.
   // Khi CameraService bị bypass trong test (frame add trực tiếp),
@@ -114,13 +114,26 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
       // Area-growth filter: chỉ trigger TTS khi object mới xuất hiện
       // hoặc tiến lại gần >30% — giảm TTS spam trong scene tĩnh
-      final currentObjects = {
-        for (final d in detections) d.label: d.boundingBox.area,
-      };
+      final currentObjects = _groupAreasByLabel(detections);
+      final sortedDetections = [...detections]
+        ..sort((a, b) {
+          final labelCompare = a.label.compareTo(b.label);
+          if (labelCompare != 0) return labelCompare;
+          return b.boundingBox.area.compareTo(a.boundingBox.area);
+        });
 
       final candidates = <DetectionObject>[];
-      for (final d in detections) {
-        final oldArea = _previousObjects[d.label];
+      final currentIndices = <String, int>{};
+      for (final d in sortedDetections) {
+        final currentIndex = currentIndices.update(
+          d.label,
+          (value) => value + 1,
+          ifAbsent: () => 0,
+        );
+        final previousAreas = _previousObjects[d.label];
+        final oldArea = previousAreas != null && currentIndex < previousAreas.length
+            ? previousAreas[currentIndex]
+            : null;
         if (oldArea == null || d.boundingBox.area > oldArea * 1.3) {
           candidates.add(d);
         }
@@ -160,5 +173,21 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
       // Luôn release CameraService frame lock kể cả khi có exception
       event.onDone();
     }
+  }
+
+  Map<String, List<double>> _groupAreasByLabel(
+    List<DetectionObject> detections,
+  ) {
+    final grouped = <String, List<double>>{};
+    for (final detection in detections) {
+      grouped.putIfAbsent(detection.label, () => <double>[])
+          .add(detection.boundingBox.area);
+    }
+
+    for (final areas in grouped.values) {
+      areas.sort((a, b) => b.compareTo(a));
+    }
+
+    return grouped;
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vibration/vibration.dart';
 
+import '../../../settings/domain/repositories/settings_repository.dart';
 import '../../domain/usecases/speak_warning_usecase.dart';
 import '../../domain/usecases/stop_speaking_usecase.dart';
 import '../../domain/usecases/pause_speaking_usecase.dart';
@@ -11,14 +12,17 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
   final SpeakWarningUsecase  _speakWarning;
   final StopSpeakingUsecase  _stopSpeaking;
   final PauseSpeakingUsecase _pauseSpeaking; // Bug 9 FIX
+  final SettingsRepository   _settingsRepository;
 
   TtsBloc({
     required SpeakWarningUsecase  speakWarning,
     required StopSpeakingUsecase  stopSpeaking,
     required PauseSpeakingUsecase pauseSpeaking,
+    required SettingsRepository settingsRepository,
   })  : _speakWarning  = speakWarning,
         _stopSpeaking  = stopSpeaking,
         _pauseSpeaking = pauseSpeaking,
+        _settingsRepository = settingsRepository,
         super(const TtsInitial()) {
     on<TtsSpeak>(_onSpeak);
     on<TtsStop>(_onStop);
@@ -27,9 +31,18 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
 
   Future<void> _onSpeak(TtsSpeak event, Emitter<TtsState> emit) async {
     try {
+      final voiceEnabled = await _settingsRepository.getVoiceEnabled();
+      if (!voiceEnabled) {
+        if (state is TtsSpeaking) {
+          await _stopSpeaking();
+          emit(const TtsStopped());
+        }
+        return;
+      }
+
       if (event.withVibration) {
-        final hasVibrator = await Vibration.hasVibrator();
-        if (hasVibrator) {
+        final bool? hasVibrator = await Vibration.hasVibrator();
+        if (hasVibrator == true) {
           Vibration.vibrate(pattern: [0, 300, 150, 300]);
         }
       }

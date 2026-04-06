@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../tts/presentation/bloc/tts_bloc.dart';
+import '../../../tts/presentation/bloc/tts_event.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -29,9 +31,12 @@ class SettingsScreen extends StatelessWidget {
                 title: const Text('Thông báo âm thanh'),
                 subtitle: const Text('Đọc cảnh báo khi phát hiện vật thể'),
                 value: state.voiceEnabled,
-                onChanged: (v) => context
-                    .read<SettingsBloc>()
-                    .add(SettingsVoiceToggled(v)),
+                onChanged: (v) {
+                  context.read<SettingsBloc>().add(SettingsVoiceToggled(v));
+                  if (!v) {
+                    context.read<TtsBloc>().add(const TtsStop());
+                  }
+                },
               ),
 
               // Tốc độ đọc

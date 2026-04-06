@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
@@ -21,6 +23,9 @@ class CameraService {
 
   // Guard tránh double-init khi lifecycle events chồng nhau
   bool _isInitializing = false;
+  bool _isDisposing = false;
+  Future<void>? _disposeFuture;
+  int _streamGeneration = 0;
 
   CameraController? get controller  => _controller;
   bool get isInitialized => _controller?.value.isInitialized ?? false;
@@ -35,6 +40,10 @@ class CameraService {
   // ── Initialize ─────────────────────────────────────────────────────────────
 
   Future<void> initialize({int cameraIndex = 0}) async {
+    final pendingDispose = _disposeFuture;
+    if (pendingDispose != null) {
+      await pendingDispose;
+    }
     // P0-FIX-1: Guard tránh race condition khi lifecycle gọi initialize() 2 lần
     if (_isInitializing) {
       debugPrint('[CameraService] initialize: already in progress, skip');
@@ -42,6 +51,7 @@ class CameraService {
     }
     _isInitializing = true;
     try {
+      _isDisposing = false;
       _cameras = await availableCameras();
       if (_cameras.isEmpty) throw const ex.CameraException('Không tìm thấy camera');
       _currentIndex = cameraIndex.clamp(0, _cameras.length - 1);
@@ -55,6 +65,8 @@ class CameraService {
     // Dọn dẹp controller cũ theo đúng thứ tự:
     // stopImageStream → dispose (P1-FIX-4: đúng thứ tự dispose)
     final old = _controller;
+    _streamGeneration++;
+    _isProcessingFrame = false;
     _controller = null; // null trước để callback stream không forward nữa
     if (old != null) {
       try {
@@ -90,12 +102,15 @@ class CameraService {
 
   // ── Stream ─────────────────────────────────────────────────────────────────
 
-  void startImageStream({required void Function(CameraImage, void Function()) onFrame}) {
-    if (_controller == null || !isInitialized) {
+  void startImageStream({
+    required void Function(CameraImage, void Function()) onFrame,
+  }) {
+    if (_controller == null || !isInitialized || _isDisposing) {
       debugPrint('[CameraService] startImageStream: not ready, skip');
       return;
     }
-    if (_controller!.value.isStreamingImages) {
+    final controller = _controller!;
+    if (controller.value.isStreamingImages) {
       debugPrint('[CameraService] already streaming');
       return;
     }
@@ -105,7 +120,14 @@ class CameraService {
     _busyDropCount = 0;
     _throttleDropCount = 0;
 
-    _controller!.startImageStream((CameraImage image) {
+    final int streamGeneration = ++_streamGeneration;
+
+    unawaited(controller.startImageStream((CameraImage image) {
+      if (_isDisposing ||
+          _controller != controller ||
+          _streamGeneration != streamGeneration) {
+        return;
+      }
       // 🚨 BẢO VỆ BUFFER NGUYÊN TỬ: Drop frame ngay và giải phóng native buffer
       if (_isProcessingFrame) {
         _busyDropCount++;
@@ -130,15 +152,20 @@ class CameraService {
       onFrame(image, () {
         _isProcessingFrame = false; // Thả lock
       });
-    });
+    }).catchError((Object error, StackTrace stackTrace) {
+      debugPrint('[CameraService] startImageStream error: $error');
+    }));
 
     debugPrint('[CameraService] stream started (~${AppConstants.activeInferenceFps}fps forward)');
   }
 
   Future<void> stopImageStream() async {
+    _streamGeneration++;
+    _isProcessingFrame = false;
+    final controller = _controller;
     try {
-      if (_controller?.value.isStreamingImages ?? false) {
-        await _controller!.stopImageStream();
+      if (controller?.value.isStreamingImages ?? false) {
+        await controller!.stopImageStream();
         debugPrint('[CameraService] stream stopped');
       }
     } catch (e) {
@@ -154,10 +181,42 @@ class CameraService {
 
   // P1-FIX-4: dispose đúng thứ tự — stopImageStream trước, dispose sau
   Future<void> dispose() async {
-    await stopImageStream();
-    try {
-      await _controller?.dispose();
-    } catch (_) {}
+    final pendingDispose = _disposeFuture;
+    if (pendingDispose != null) {
+      await pendingDispose;
+      return;
+    }
+
+    final controller = _controller;
     _controller = null;
+    _isDisposing = true;
+    _streamGeneration++;
+    _isProcessingFrame = false;
+
+    final future = () async {
+      try {
+        if (controller?.value.isStreamingImages ?? false) {
+          await controller!.stopImageStream();
+        }
+      } catch (e) {
+        debugPrint('[CameraService] dispose stop stream error: $e');
+      }
+
+      try {
+        await controller?.dispose();
+      } catch (e) {
+        debugPrint('[CameraService] dispose controller error: $e');
+      } finally {
+        _isProcessingFrame = false;
+        _isDisposing = false;
+      }
+    }();
+
+    _disposeFuture = future;
+    try {
+      await future;
+    } finally {
+      _disposeFuture = null;
+    }
   }
 }
