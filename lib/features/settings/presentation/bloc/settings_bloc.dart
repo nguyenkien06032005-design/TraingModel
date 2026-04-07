@@ -1,8 +1,3 @@
-
-
-
-
-
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/config/detection_config.dart';
@@ -12,11 +7,14 @@ import '../../../tts/domain/usecases/stop_speaking_usecase.dart';
 import 'settings_event.dart';
 import 'settings_state.dart';
 
+/// FIX SV-006: _onLanguage sekarang truyền speechRate hiện tại khi configure TTS.
+/// Trước đây: _configureTts(language: e.lang) → speechRate bị reset về default
+/// Sau: _configureTts(language: e.lang, speechRate: state.speechRate) → giữ rate
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository  _repository;
-  final ConfigureTtsUsecase _configureTts;    
+  final ConfigureTtsUsecase _configureTts;
   final StopSpeakingUsecase _stopSpeaking;
-  final DetectionConfig     _detectionConfig; 
+  final DetectionConfig     _detectionConfig;
 
   SettingsBloc(
     this._repository,
@@ -43,12 +41,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     final showPanel    = await _repository.getShowConfidencePanel();
     final language     = await _repository.getTtsLanguage();
 
-    
     _detectionConfig.setConfidenceThreshold(confThresh);
-    await _configureTts(
-      speechRate: speechRate,
-      language: language,
-    );
+    await _configureTts(speechRate: speechRate, language: language);
 
     emit(state.copyWith(
       speechRate:          speechRate,
@@ -65,7 +59,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setSpeechRate(e.rate);
-    await _configureTts(speechRate: e.rate); 
+    await _configureTts(speechRate: e.rate, language: state.ttsLanguage);
     emit(state.copyWith(speechRate: e.rate));
   }
 
@@ -74,7 +68,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setConfidenceThreshold(e.threshold);
-    
     _detectionConfig.setConfidenceThreshold(e.threshold);
     emit(state.copyWith(confidenceThreshold: e.threshold));
   }
@@ -84,9 +77,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setVoiceEnabled(e.enabled);
-    if (!e.enabled) {
-      await _stopSpeaking();
-    }
+    if (!e.enabled) await _stopSpeaking();
     emit(state.copyWith(voiceEnabled: e.enabled));
   }
 
@@ -98,14 +89,18 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     emit(state.copyWith(showConfidencePanel: e.show));
   }
 
+  /// FIX SV-006: Truyền speechRate hiện tại khi đổi language
+  /// Trước: _configureTts(language: e.lang) → TTS speechRate bị reset về default
+  /// Sau:   _configureTts(language: e.lang, speechRate: state.speechRate)
   Future<void> _onLanguage(
     SettingsTtsLanguageChanged e,
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setTtsLanguage(e.lang);
-    
-    
-    await _configureTts(language: e.lang);
+    await _configureTts(
+      language:   e.lang,
+      speechRate: state.speechRate, // ← FIX: giữ nguyên rate hiện tại
+    );
     emit(state.copyWith(ttsLanguage: e.lang));
   }
 }

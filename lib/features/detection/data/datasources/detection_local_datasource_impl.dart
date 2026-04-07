@@ -50,9 +50,7 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
         try {
           options.addDelegate(
             GpuDelegateV2(
-              options: GpuDelegateOptionsV2(
-                isPrecisionLossAllowed: true,
-              ),
+              options: GpuDelegateOptionsV2(isPrecisionLossAllowed: true),
             ),
           );
           delegateEnabled = true;
@@ -78,10 +76,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
       if (!delegateEnabled) {
         options.threads = AppConstants.inferenceThreads;
-        if (kDebugMode) {
-          debugPrint(
-              '[DS] CPU-only inference (${AppConstants.inferenceThreads} threads)');
-        }
       }
 
       _interpreter =
@@ -96,7 +90,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
       _modelLoaded = true;
       await _spawnIsolate();
-      if (kDebugMode) debugPrint('[DS] Isolate ready');
     } catch (e, st) {
       debugPrint('[DS] loadModel FAILED: $e\n$st');
       throw ModelNotFoundException('Cannot load model: $e');
@@ -128,12 +121,19 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _isolate = null;
     _mainReceivePort = null;
     _isolateSendPort = null;
-
     await _spawnIsolate();
     if (kDebugMode) debugPrint('[DS] Isolate respawned');
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIX SV-002: _isolateBusy phải được reset trong finally block
+  // TRƯỚC: nếu có exception trong try, _isolateBusy mãi mãi = true
+  //        → inference bị "frozen" silently sau lần đầu exception
+  // SAU:   finally { replyPort?.close(); _isolateBusy = false; }
+  //        → luôn được reset dù success hay failure
+  // ─────────────────────────────────────────────────────────────────────────
   bool _isolateBusy = false;
+
   @override
   Future<List<Map<String, dynamic>>> runInference(
     CameraImage image, {
@@ -201,15 +201,17 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
       return [];
     } finally {
       replyPort?.close();
+      // ✅ FIX SV-002: reset trong finally → luôn chạy dù success/exception/timeout
+      _isolateBusy = false;
     }
   }
 
   @override
   Future<void> closeModel() async {
-    _isolateBusy = false;
     if (_isolateSendPort != null) {
       final shutdownAck = ReceivePort();
-      _isolateSendPort!.send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
+      _isolateSendPort!
+          .send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
       await shutdownAck.first.timeout(
         const Duration(milliseconds: 500),
         onTimeout: () {
@@ -228,10 +230,13 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _interpreter?.close();
     _interpreter = null;
     _modelLoaded = false;
+    _isolateBusy = false;
     _consecutiveTimeouts = 0;
     if (kDebugMode) debugPrint('[DS] model closed, resources freed');
   }
 }
+
+// ─── Isolate-side globals ───────────────────────────────────────────────────
 
 Interpreter? _cachedInterpreter;
 int _cachedAddress = 0;
@@ -253,16 +258,10 @@ void _isolateEntry(SendPort mainSendPort) {
       _initInputSize = msg.inputSize;
       _initOutputShape = msg.outputShape;
       msg.ackPort.send(const _IsolateInitAck());
-      if (kDebugMode) {
-        debugPrint(
-          '[Isolate] init received + ACK sent: ${msg.labels.length} labels',
-        );
-      }
     } else if (msg is _IsolateShutdown) {
       try {
         _cachedInterpreter?.close();
         _cachedInterpreter = null;
-        if (kDebugMode) debugPrint('[Isolate] interpreter closed on shutdown');
       } catch (e) {
         debugPrint('[Isolate] error closing interpreter: $e');
       }
@@ -271,7 +270,6 @@ void _isolateEntry(SendPort mainSendPort) {
       Isolate.exit();
     } else if (msg is _InferenceJob) {
       if (_initLabels == null) {
-        debugPrint('[Isolate] ERROR: init not received — dropping frame');
         msg.replyPort.send('ERROR: not initialized');
         return;
       }
@@ -281,21 +279,14 @@ void _isolateEntry(SendPort mainSendPort) {
 }
 
 void _processJob(_InferenceJob job) {
-  final swTotal = Stopwatch()..start();
-  final swPreproc = Stopwatch();
-  final swInfer = Stopwatch();
-  final swParse = Stopwatch();
   try {
     if (_cachedAddress != job.interpreterAddress) {
       _cachedInterpreter?.close();
       _cachedInterpreter = Interpreter.fromAddress(job.interpreterAddress);
       _cachedAddress = job.interpreterAddress;
-      if (kDebugMode)
-        debugPrint('[Isolate] interpreter cached (addr=$_cachedAddress)');
     }
     final interpreter = _cachedInterpreter!;
 
-    swPreproc.start();
     final planes = <Uint8List>[
       for (final t in job.planeBytes) t.materialize().asUint8List(),
     ];
@@ -314,15 +305,11 @@ void _processJob(_InferenceJob job) {
 
     final inputTensor =
         lb.inputTensor.reshape([1, _initInputSize, _initInputSize, 3]);
-    swPreproc.stop();
 
-    swInfer.start();
     _ensureOutputFlat();
     final outputMap = <int, Object>{0: _cachedOutputBytes!};
     interpreter.runForMultipleInputs([inputTensor], outputMap);
-    swInfer.stop();
 
-    swParse.start();
     final results = _parseFlat(
       flat: _cachedOutputFloats!,
       letterbox: lb,
@@ -330,17 +317,6 @@ void _processJob(_InferenceJob job) {
       iouThreshold: job.iouThreshold,
       maxDetections: job.maxDetections,
     );
-    swParse.stop();
-    swTotal.stop();
-
-    if (kDebugMode) {
-      debugPrint(
-        '[Perf] total=${swTotal.elapsedMilliseconds}ms '
-        'preproc=${swPreproc.elapsedMilliseconds}ms '
-        'infer=${swInfer.elapsedMilliseconds}ms '
-        'parse=${swParse.elapsedMilliseconds}ms',
-      );
-    }
 
     job.replyPort.send(results);
   } catch (e, st) {
@@ -350,17 +326,11 @@ void _processJob(_InferenceJob job) {
 
 void _ensureOutputFlat() {
   if (_initOutputShape.length < 3) {
-    throw StateError(
-      '[Isolate] Output shape invalid: $_initOutputShape — '
-      'cần ít nhất 3 chiều [batch, dim0, dim1]',
-    );
+    throw StateError('[Isolate] Output shape invalid: $_initOutputShape');
   }
   final needed = _initOutputShape[1] * _initOutputShape[2];
   if (needed <= 0) {
-    throw StateError(
-      '[Isolate] Output shape produced needed=$needed — '
-      'shape=$_initOutputShape có thể bị transpose sai hoặc zero-dim',
-    );
+    throw StateError('[Isolate] Output shape produced needed=$needed');
   }
   if (_cachedOutputBytes == null || _cachedOutputLen != needed) {
     _cachedOutputBytes = Uint8List(needed * Float32List.bytesPerElement);
@@ -380,10 +350,7 @@ List<Map<String, dynamic>> _parseFlat({
   final inputSize = _initInputSize;
   final shape = _initOutputShape;
 
-  if (shape.length < 3) {
-    debugPrint('[Parse] ERROR: shape $shape không đủ 3 chiều — bỏ qua frame');
-    return [];
-  }
+  if (shape.length < 3) return [];
 
   final int dim0 = shape[1];
   final int dim1 = shape[2];
@@ -394,18 +361,10 @@ List<Map<String, dynamic>> _parseFlat({
   final int availableClasses =
       (numChannels - classOffset).clamp(0, labels.length);
 
-  if (availableClasses <= 0) {
-    debugPrint(
-      '[Parse] ERROR: availableClasses=$availableClasses '
-      '-> shape $shape incompatible with ${labels.length} labels',
-    );
-    return [];
-  }
+  if (availableClasses <= 0) return [];
 
   double valueAt(int boxIndex, int channelIndex) {
-    if (isTransposed) {
-      return flat[channelIndex * numBoxes + boxIndex];
-    }
+    if (isTransposed) return flat[channelIndex * numBoxes + boxIndex];
     return flat[boxIndex * numChannels + channelIndex];
   }
 
@@ -416,7 +375,6 @@ List<Map<String, dynamic>> _parseFlat({
     final double cy = valueAt(i, 1);
     final double bw = valueAt(i, 2);
     final double bh = valueAt(i, 3);
-
     if (bw <= 0 || bh <= 0) continue;
 
     final double objectness =
@@ -432,62 +390,39 @@ List<Map<String, dynamic>> _parseFlat({
         bestClassId = c;
       }
     }
-
     if (bestClassId < 0) continue;
 
     final double finalScore = objectness * bestClassScore;
     if (finalScore < confidenceThreshold) continue;
 
     final box = ImageConverter.unLetterboxBox(
-      cx: cx,
-      cy: cy,
-      bw: bw,
-      bh: bh,
-      padLeft: letterbox.padLeft,
-      padTop: letterbox.padTop,
+      cx: cx, cy: cy, bw: bw, bh: bh,
+      padLeft: letterbox.padLeft, padTop: letterbox.padTop,
       scale: letterbox.scale,
-      origWidth: letterbox.origWidth,
-      origHeight: letterbox.origHeight,
+      origWidth: letterbox.origWidth, origHeight: letterbox.origHeight,
       inputSize: inputSize,
     );
-
     if (box.width <= 0 || box.height <= 0) continue;
 
     rawBoxes.add(_RawBox(
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
-      score: finalScore,
-      classId: bestClassId,
+      left: box.left, top: box.top, width: box.width, height: box.height,
+      score: finalScore, classId: bestClassId,
     ));
   }
 
-  const int nmsTopK = 100;
-  if (rawBoxes.length > nmsTopK) {
+  if (rawBoxes.length > 100) {
     rawBoxes.sort((a, b) => b.score.compareTo(a.score));
-    rawBoxes.removeRange(nmsTopK, rawBoxes.length);
-    if (kDebugMode) {
-      debugPrint('[Parse] top-k capped raw boxes to $nmsTopK');
-    }
+    rawBoxes.removeRange(100, rawBoxes.length);
   }
 
   final kept = _nms(rawBoxes, iouThreshold);
-
-  if (kept.isNotEmpty && kDebugMode) {
-    debugPrint('[Parse] NMS kept=${kept.length}');
-  }
 
   return kept.take(maxDetections).map((b) {
     final label =
         b.classId < labels.length ? labels[b.classId] : 'class_${b.classId}';
     return <String, dynamic>{
-      'label': label,
-      'confidence': b.score,
-      'left': b.left,
-      'top': b.top,
-      'width': b.width,
-      'height': b.height,
+      'label': label, 'confidence': b.score,
+      'left': b.left, 'top': b.top, 'width': b.width, 'height': b.height,
     };
   }).toList();
 }
@@ -527,12 +462,8 @@ class _RawBox {
   final double left, top, width, height, score;
   final int classId;
   const _RawBox({
-    required this.left,
-    required this.top,
-    required this.width,
-    required this.height,
-    required this.score,
-    required this.classId,
+    required this.left, required this.top, required this.width,
+    required this.height, required this.score, required this.classId,
   });
 }
 
@@ -541,22 +472,16 @@ class _IsolateInitMsg {
   final int inputSize;
   final List<int> outputShape;
   final SendPort ackPort;
-
   const _IsolateInitMsg({
-    required this.labels,
-    required this.inputSize,
-    required this.outputShape,
-    required this.ackPort,
+    required this.labels, required this.inputSize,
+    required this.outputShape, required this.ackPort,
   });
 }
 
-class _IsolateInitAck {
-  const _IsolateInitAck();
-}
+class _IsolateInitAck { const _IsolateInitAck(); }
 
 class _IsolateShutdown {
   final SendPort replyPort;
-
   const _IsolateShutdown({required this.replyPort});
 }
 
@@ -565,26 +490,15 @@ class _InferenceJob {
   final List<TransferableTypedData> planeBytes;
   final List<int> planeRowStrides;
   final List<int> planePixelStrides;
-  final int imageWidth;
-  final int imageHeight;
-  final int interpreterAddress;
-  final int rotationDegrees;
-
-  final double confidenceThreshold;
-  final double iouThreshold;
+  final int imageWidth, imageHeight, interpreterAddress, rotationDegrees;
+  final double confidenceThreshold, iouThreshold;
   final int maxDetections;
-
   const _InferenceJob({
-    required this.replyPort,
-    required this.planeBytes,
-    required this.planeRowStrides,
-    required this.planePixelStrides,
-    required this.imageWidth,
-    required this.imageHeight,
-    required this.interpreterAddress,
-    required this.rotationDegrees,
-    required this.confidenceThreshold,
-    required this.iouThreshold,
+    required this.replyPort, required this.planeBytes,
+    required this.planeRowStrides, required this.planePixelStrides,
+    required this.imageWidth, required this.imageHeight,
+    required this.interpreterAddress, required this.rotationDegrees,
+    required this.confidenceThreshold, required this.iouThreshold,
     required this.maxDetections,
   });
 }

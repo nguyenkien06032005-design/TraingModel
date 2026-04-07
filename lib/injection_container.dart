@@ -8,6 +8,7 @@ import 'features/detection/data/datasources/detection_local_datasource_impl.dart
 import 'features/detection/data/repositories/detection_repository_impl.dart';
 import 'features/detection/domain/repositories/detection_repository.dart';
 import 'features/detection/domain/usecases/load_model_usecase.dart';
+import 'features/detection/domain/usecases/close_model_usecase.dart';    // ← NEW SV-007
 import 'features/detection/domain/usecases/detection_object_from_frame.dart';
 import 'features/detection/presentation/bloc/detection_bloc.dart';
 import 'features/tts/data/datasources/tts_service.dart';
@@ -26,58 +27,67 @@ import 'features/settings/presentation/bloc/settings_bloc.dart';
 final sl = GetIt.instance;
 
 Future<void> init() async {
+  // ── Storage ──────────────────────────────────────────────────────────────
   sl.registerSingleton<LocalStorageService>(LocalStorageService());
   sl.registerSingleton<SettingsRepository>(
     SettingsRepositoryImpl(sl<LocalStorageService>()),
   );
 
+  // ── TTS ──────────────────────────────────────────────────────────────────
   final ttsService = TtsService();
   await ttsService.initialize();
   sl.registerSingleton<TtsService>(ttsService);
-
   sl.registerSingleton<TtsRepository>(TtsRepositoryImpl(sl<TtsService>()));
   sl.registerSingleton(SpeakWarningUsecase(sl<TtsRepository>()));
   sl.registerSingleton(StopSpeakingUsecase(sl<TtsRepository>()));
   sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>()));
   sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));
-
   sl.registerSingleton(TtsBloc(
-    speakWarning: sl(),
-    stopSpeaking: sl(),
-    pauseSpeaking: sl<PauseSpeakingUsecase>(),
+    speakWarning:       sl(),
+    stopSpeaking:       sl(),
+    pauseSpeaking:      sl<PauseSpeakingUsecase>(),
     settingsRepository: sl<SettingsRepository>(),
   ));
 
+  // ── Detection ────────────────────────────────────────────────────────────
   sl.registerSingleton(DetectionConfig());
-
   sl.registerSingleton<DetectionLocalDatasource>(
     DetectionLocalDatasourceImpl(sl<DetectionConfig>()),
   );
-  sl.registerSingleton<DetectionRepository>(DetectionRepositoryImpl(sl()));
+  sl.registerSingleton<DetectionRepository>(
+    DetectionRepositoryImpl(sl()),
+  );
   sl.registerSingleton(LoadModelUsecase(sl<DetectionRepository>()));
+  sl.registerSingleton(CloseModelUsecase(sl<DetectionRepository>()));  // ← NEW SV-007
   sl.registerSingleton(DetectionObjectFromFrame(sl<DetectionRepository>()));
 
-  sl.registerFactory(() => DetectionBloc(
-        loadModel: sl(),
-        detectFromFrame: sl(),
-        repository: sl<DetectionRepository>(),
-        onWarning: ({
-          required String text,
-          required bool immediate,
-          required bool withVibration,
-        }) {
-          sl<TtsBloc>().add(
-            TtsSpeak(text, immediate: immediate, withVibration: withVibration),
-          );
-        },
-      ));
+  // ✅ FIX SV-005: LazySingleton → chỉ tạo 1 DetectionBloc duy nhất
+  // registerFactory() tạo instance mới mỗi lần sl<DetectionBloc>() được gọi.
+  // Điều này gây risk 2 BLoC gọi loadModel() trên cùng 1 Datasource singleton
+  // → 2 isolate được spawn → race condition trên _modelLoaded flag.
+  sl.registerLazySingleton<DetectionBloc>(() => DetectionBloc(
+    loadModel:      sl<LoadModelUsecase>(),
+    closeModel:     sl<CloseModelUsecase>(),         // ← FIX SV-007
+    detectFromFrame: sl<DetectionObjectFromFrame>(),
+    onWarning: ({
+      required String text,
+      required bool immediate,
+      required bool withVibration,
+    }) {
+      sl<TtsBloc>().add(
+        TtsSpeak(text, immediate: immediate, withVibration: withVibration),
+      );
+    },
+  ));
 
+  // ── Camera ───────────────────────────────────────────────────────────────
   sl.registerSingleton(CameraService());
 
-  sl.registerFactory(() => SettingsBloc(
-        sl<SettingsRepository>(),
-        sl<ConfigureTtsUsecase>(),
-        sl<StopSpeakingUsecase>(),
-        sl<DetectionConfig>(),
-      ));
+  // ✅ FIX SV-005: SettingsBloc cũng là LazySingleton
+  sl.registerLazySingleton<SettingsBloc>(() => SettingsBloc(
+    sl<SettingsRepository>(),
+    sl<ConfigureTtsUsecase>(),
+    sl<StopSpeakingUsecase>(),
+    sl<DetectionConfig>(),
+  ));
 }

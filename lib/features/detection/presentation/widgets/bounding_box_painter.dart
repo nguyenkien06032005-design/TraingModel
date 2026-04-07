@@ -36,7 +36,6 @@ class SmoothedBox {
 
 class _TrackedBox {
   static const double alpha = AppConstants.trackingSmoothingAlpha;
-
   final int trackId;
   double left, top, width, height;
   final String label;
@@ -73,9 +72,14 @@ class _TrackedBox {
       );
 }
 
+/// FIX SV-011: Version counter thay vì O(n) box comparison
 class BoxTracker {
   final Map<int, _TrackedBox> _tracked = {};
   int _nextTrackId = 0;
+
+  // ✅ FIX SV-011: version tăng mỗi khi state thay đổi
+  int _version = 0;
+  int get version => _version;
 
   static const double matchThreshold = 0.35;
   static const Duration maxTrackAge =
@@ -89,7 +93,6 @@ class BoxTracker {
     }
 
     final usedTrackIds = <int>{};
-
     for (final det in detections) {
       final box = det.boundingBox;
       int? bestTrackId;
@@ -99,7 +102,6 @@ class BoxTracker {
         final tracked = entry.value;
         if (tracked.label != det.label) continue;
         if (usedTrackIds.contains(entry.key)) continue;
-
         final iou = _iou(
           tracked.left,
           tracked.top,
@@ -138,6 +140,7 @@ class BoxTracker {
       (_, tracked) => timestamp.difference(tracked.lastSeenAt) > maxTrackAge,
     );
 
+    _version++; // ✅ bump version mỗi khi tracker cập nhật
     return _tracked.values.map((t) => t.snapshot()).toList(growable: false)
       ..sort((a, b) => a.trackId.compareTo(b.trackId));
   }
@@ -164,6 +167,7 @@ class BoxTracker {
   void clear() {
     _tracked.clear();
     _nextTrackId = 0;
+    _version++;
   }
 }
 
@@ -171,26 +175,30 @@ class BoundingBoxPainter extends CustomPainter {
   final List<SmoothedBox> boxes;
   final bool mirrorHorizontal;
 
-  static final _strokePaint = Paint()..style = PaintingStyle.stroke;
-  static final _cornerPaint = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeCap = StrokeCap.round;
-  static final _labelPaint = Paint()..style = PaintingStyle.fill;
+  // ✅ FIX SV-011: Version-based shouldRepaint — O(1) thay vì O(n)
+  final int _version;
 
+  /// Cache cho TextPainter — tránh tạo lại mỗi frame cho cùng label
   final Map<String, TextPainter> _textCache = {};
   static const int _maxCacheEntries = 100;
 
   BoundingBoxPainter({
     required this.boxes,
     this.mirrorHorizontal = false,
-  });
+    int version = 0,
+  }) : _version = version;
 
+  // ✅ FIX SV-011: O(1) comparison qua version counter
   @override
   bool shouldRepaint(covariant BoundingBoxPainter old) {
     if (mirrorHorizontal != old.mirrorHorizontal) return true;
-    if (boxes.length != old.boxes.length) return true;
-    for (int i = 0; i < boxes.length; i++) {
-      if (boxes[i] != old.boxes[i]) return true;
+    if (_version != old._version) return true;
+    // Fallback nếu version không được cung cấp
+    if (_version == 0 && old._version == 0) {
+      if (boxes.length != old.boxes.length) return true;
+      for (int i = 0; i < boxes.length; i++) {
+        if (boxes[i] != old.boxes[i]) return true;
+      }
     }
     return false;
   }
@@ -218,7 +226,6 @@ class BoundingBoxPainter extends CustomPainter {
     t = t.clamp(0, size.height);
     r = r.clamp(0, size.width);
     b = b.clamp(0, size.height);
-
     if (r - l < 2 || b - t < 2) return;
 
     final rect = Rect.fromLTRB(l, t, r, b);
@@ -227,21 +234,31 @@ class BoundingBoxPainter extends CustomPainter {
         ? 1.0
         : (1.0 - box.missedFrames / 4.0).clamp(0.2, 1.0);
 
-    _strokePaint
+    // ✅ FIX SV-008: Tạo Paint objects mới mỗi frame thay vì mutate static
+    // Flutter single-threaded nên không phải thread-safety issue, nhưng
+    // mutating static objects là anti-pattern — object lifecycle không rõ ràng
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
       ..color = color.withValues(alpha: 0.85 * opacity)
       ..strokeWidth = 2.0;
-    canvas.drawRect(rect, _strokePaint);
 
-    _drawCorners(canvas, rect, color.withValues(alpha: opacity));
-    _drawLabel(canvas, size, rect, box.label, color.withValues(alpha: opacity));
-  }
-
-  void _drawCorners(Canvas canvas, Rect rect, Color color) {
-    final len = (rect.width * 0.15).clamp(8.0, 20.0);
-    _cornerPaint
-      ..color = color
+    final cornerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: opacity)
       ..strokeWidth = 3.0;
 
+    final labelPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = color.withValues(alpha: 0.9);
+
+    canvas.drawRect(rect, strokePaint);
+    _drawCorners(canvas, rect, cornerPaint);
+    _drawLabel(canvas, size, rect, box.label, labelPaint);
+  }
+
+  void _drawCorners(Canvas canvas, Rect rect, Paint paint) {
+    final len = (rect.width * 0.15).clamp(8.0, 20.0);
     canvas.drawPath(
       Path()
         ..moveTo(rect.left, rect.top + len)
@@ -256,24 +273,28 @@ class BoundingBoxPainter extends CustomPainter {
         ..moveTo(rect.right - len, rect.bottom)
         ..lineTo(rect.right, rect.bottom)
         ..lineTo(rect.right, rect.bottom - len),
-      _cornerPaint,
+      paint,
     );
   }
 
   void _drawLabel(
-      Canvas canvas, Size size, Rect rect, String label, Color color) {
+    Canvas canvas,
+    Size size,
+    Rect rect,
+    String label,
+    Paint bgPaint,
+  ) {
     final tp = _getOrCreatePainter(label);
     final lw = tp.width + 10;
     final lh = tp.height + 5;
     final lt = (rect.top - lh - 2).clamp(0.0, size.height - lh);
 
-    _labelPaint.color = color.withValues(alpha: 0.9);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(rect.left, lt, lw, lh),
         const Radius.circular(3),
       ),
-      _labelPaint,
+      bgPaint,
     );
     tp.paint(canvas, Offset(rect.left + 5, lt + 2.5));
   }
@@ -305,8 +326,15 @@ class BoundingBoxPainter extends CustomPainter {
     return painter;
   }
 
+  // ✅ FIX SV-004: Dispose tất cả TextPainter còn trong cache
+  // TRƯỚC: dispose() chỉ gọi super.dispose() — tất cả TextPainter bị leak
+  // SAU:   loop qua _textCache, dispose() từng entry, rồi clear map
   @override
   void dispose() {
+    for (final tp in _textCache.values) {
+      tp.dispose();
+    }
+    _textCache.clear();
     super.dispose();
   }
 

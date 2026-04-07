@@ -1,0 +1,100 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SafeVision — docker-compose cho local CI simulation
+# Usage:
+#   docker compose run test          → chạy full test suite
+#   docker compose run analyze       → lint + analyze
+#   docker compose run build-android → build APK debug
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # Base service với Flutter SDK + dependencies
+  base: &base
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: deps
+    volumes:
+      - ../..:/app:ro          # read-only source mount
+      - pub-cache:/root/.pub-cache
+      - build-cache:/app/build
+    working_dir: /app
+
+  # ── Analyze & Format ──────────────────────────────────────────────────────
+  analyze:
+    <<: *base
+    command: >
+      sh -c "
+        echo '🔍 Running dart format check...' &&
+        dart format --output=none --set-exit-if-changed lib/ test/ &&
+        echo '🔍 Running flutter analyze...' &&
+        flutter analyze --fatal-infos &&
+        echo '✅ Analysis complete'
+      "
+
+  # ── Test ──────────────────────────────────────────────────────────────────
+  test:
+    <<: *base
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: test-runner
+    volumes:
+      - ../..:/app:ro
+      - pub-cache:/root/.pub-cache
+      - coverage-out:/app/coverage  # writable for coverage output
+    command: >
+      sh -c "
+        echo '🧪 Running tests with coverage...' &&
+        flutter test --coverage --reporter=expanded --timeout=60s test/ &&
+        echo '' &&
+        echo '📊 Coverage summary:' &&
+        lcov --summary coverage/lcov.info 2>&1 | grep -E 'lines|functions|branches' &&
+        echo '' &&
+        echo '✅ Tests complete'
+      "
+
+  # ── Test (specific file) ──────────────────────────────────────────────────
+  test-file:
+    <<: *base
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: test-runner
+    volumes:
+      - ../..:/app:ro
+      - pub-cache:/root/.pub-cache
+    # Usage: docker compose run test-file test/features/tts/tts_service_fix_test.dart
+    entrypoint: flutter test --reporter=expanded
+
+  # ── Build Android ─────────────────────────────────────────────────────────
+  build-android:
+    <<: *base
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: android-builder
+    volumes:
+      - ../..:/app:ro
+      - pub-cache:/root/.pub-cache
+      - build-out:/app/build  # writable for build output
+    command: >
+      sh -c "
+        echo '🤖 Building Android APK (debug)...' &&
+        flutter build apk --debug --split-per-abi &&
+        echo '✅ Build complete' &&
+        find /app/build/app/outputs/apk -name '*.apk' -exec ls -lh {} \;
+      "
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  pub-cache:
+    driver: local
+  build-cache:
+    driver: local
+  build-out:
+    driver: local
+  coverage-out:
+    driver: local

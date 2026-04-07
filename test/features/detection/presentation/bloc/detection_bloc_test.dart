@@ -4,13 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:safe_vision_app/features/detection/domain/entities/detection_object.dart';
+import 'package:safe_vision_app/features/detection/domain/usecases/close_model_usecase.dart';
 import 'package:safe_vision_app/features/detection/domain/usecases/detection_object_from_frame.dart';
 import 'package:safe_vision_app/features/detection/domain/usecases/load_model_usecase.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_bloc.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_event.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_state.dart';
 
-
+import 'detection_bloc_fixed_test.dart';
 
 class MockLoadModelUsecase extends Mock implements LoadModelUsecase {}
 
@@ -18,8 +19,7 @@ class MockDetectFromFrame extends Mock implements DetectionObjectFromFrame {}
 
 class MockCameraImage extends Mock implements CameraImage {}
 
-
-
+class MockCloseModelUsecase extends Mock implements CloseModelUsecase {}
 DetectionObject _safeObject({
   String label = 'person',
   double confidence = 0.8,
@@ -53,6 +53,7 @@ DetectionObject _dangerousObject({
 void main() {
   late MockLoadModelUsecase mockLoadModel;
   late MockDetectFromFrame mockDetectFromFrame;
+  late CloseModelUsecase mockCloseModelUsecase;
   late MockCameraImage mockCameraImage;
 
   setUpAll(() {
@@ -63,32 +64,25 @@ void main() {
     mockLoadModel = MockLoadModelUsecase();
     mockDetectFromFrame = MockDetectFromFrame();
     mockCameraImage = MockCameraImage();
+    mockCloseModelUsecase = MockCloseModelUsecase();
   });
 
-  
   DetectionBloc buildBloc({
     DetectionWarningCallback? onWarning,
   }) =>
       DetectionBloc(
         loadModel: mockLoadModel,
         detectFromFrame: mockDetectFromFrame,
+        closeModel: mockCloseModelUsecase,
         onWarning: onWarning ??
             ({required text, required immediate, required withVibration}) {},
       );
-
-  
-  
-  
 
   test('initial state is DetectionInitial', () {
     final bloc = buildBloc();
     expect(bloc.state, const DetectionInitial());
     bloc.close();
   });
-
-  
-  
-  
 
   group('DetectionStarted', () {
     blocTest<DetectionBloc, DetectionState>(
@@ -107,8 +101,7 @@ void main() {
     blocTest<DetectionBloc, DetectionState>(
       'emits Failure when load fails',
       build: () {
-        when(() => mockLoadModel.load())
-            .thenThrow(Exception('load error'));
+        when(() => mockLoadModel.load()).thenThrow(Exception('load error'));
         return buildBloc();
       },
       act: (bloc) => bloc.add(const DetectionStarted()),
@@ -119,10 +112,6 @@ void main() {
     );
   });
 
-  
-  
-  
-
   blocTest<DetectionBloc, DetectionState>(
     'DetectionStopped → back to Initial',
     build: () => buildBloc(),
@@ -130,10 +119,6 @@ void main() {
     act: (bloc) => bloc.add(const DetectionStopped()),
     expect: () => [const DetectionInitial()],
   );
-
-  
-  
-  
 
   blocTest<DetectionBloc, DetectionState>(
     'empty detections → success with empty list',
@@ -144,18 +129,13 @@ void main() {
       return buildBloc();
     },
     seed: () => const DetectionModelReady(),
-    act: (bloc) =>
-        bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
+    act: (bloc) => bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
     expect: () => [
       predicate<DetectionState>(
         (s) => s is DetectionSuccess && s.detections.isEmpty,
       ),
     ],
   );
-
-  
-  
-  
 
   blocTest<DetectionBloc, DetectionState>(
     'single detection',
@@ -166,25 +146,16 @@ void main() {
       return buildBloc();
     },
     seed: () => const DetectionModelReady(),
-    act: (bloc) =>
-        bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
+    act: (bloc) => bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
     expect: () => [isA<DetectionSuccess>()],
   );
 
-  
-  
-  
-
-  
-  
-  
-  
   group('Callback behavior', () {
     String? capturedText;
     bool? capturedImmediate;
 
     setUp(() {
-      capturedText      = null;
+      capturedText = null;
       capturedImmediate = null;
     });
 
@@ -195,9 +166,9 @@ void main() {
                 rotationDegrees: any(named: 'rotationDegrees')))
             .thenAnswer((_) async => [_dangerousObject()]);
         return buildBloc(
-          onWarning:
-              ({required text, required immediate, required withVibration}) {
-            capturedText      = text;
+          onWarning: (
+              {required text, required immediate, required withVibration}) {
+            capturedText = text;
             capturedImmediate = immediate;
           },
         );
@@ -207,8 +178,10 @@ void main() {
           bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
       expect: () => [isA<DetectionSuccess>()],
       verify: (_) {
-        expect(capturedImmediate, isTrue,  reason: 'dangerous object phải trigger immediate TTS');
-        expect(capturedText,      isNotEmpty, reason: 'warning text không được rỗng');
+        expect(capturedImmediate, isTrue,
+            reason: 'dangerous object phải trigger immediate TTS');
+        expect(capturedText, isNotEmpty,
+            reason: 'warning text không được rỗng');
       },
     );
 
@@ -219,9 +192,9 @@ void main() {
                 rotationDegrees: any(named: 'rotationDegrees')))
             .thenAnswer((_) async => [_safeObject()]);
         return buildBloc(
-          onWarning:
-              ({required text, required immediate, required withVibration}) {
-            capturedText      = text;
+          onWarning: (
+              {required text, required immediate, required withVibration}) {
+            capturedText = text;
             capturedImmediate = immediate;
           },
         );
@@ -231,8 +204,6 @@ void main() {
           bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
       expect: () => [isA<DetectionSuccess>()],
       verify: (_) {
-        
-        
         expect(capturedImmediate, isNotNull,
             reason: 'callback phải được gọi với safe object');
         expect(capturedImmediate, isFalse,
@@ -240,10 +211,6 @@ void main() {
       },
     );
   });
-
-  
-  
-  
 
   blocTest<DetectionBloc, DetectionState>(
     'drops second frame while processing',
@@ -265,14 +232,9 @@ void main() {
     expect: () => [isA<DetectionSuccess>()],
     verify: (_) {
       verify(() => mockDetectFromFrame(any(),
-              rotationDegrees: any(named: 'rotationDegrees')))
-          .called(1);
+          rotationDegrees: any(named: 'rotationDegrees'))).called(1);
     },
   );
-
-  
-  
-  
 
   blocTest<DetectionBloc, DetectionState>(
     'handles exception silently',
@@ -283,8 +245,7 @@ void main() {
       return buildBloc();
     },
     seed: () => const DetectionModelReady(),
-    act: (bloc) =>
-        bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
+    act: (bloc) => bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
     expect: () => <DetectionState>[],
   );
 }

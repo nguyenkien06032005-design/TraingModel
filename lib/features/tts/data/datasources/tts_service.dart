@@ -3,11 +3,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../../../core/constants/app_constants.dart';
 
+/// SV-001 FIX: Xóa double _enqueue() call ở cuối speakWarning()
+/// SV-012 FIX: Refactor _lastSpoken cleanup — logic đơn giản, nhất quán
 class TtsService {
   final FlutterTts _tts = FlutterTts();
 
   bool _isSpeaking = false;
   final List<String> _queue = [];
+
+  /// Lưu timestamp lần cuối mỗi text được phát — dùng để enforce cooldown
   final Map<String, DateTime> _lastSpoken = {};
 
   String _language = AppConstants.ttsLanguage;
@@ -31,9 +35,7 @@ class TtsService {
     await _tts.setPitch(_pitch);
     await _tts.setVolume(_volume);
 
-    _tts.setStartHandler(() {
-      _isSpeaking = true;
-    });
+    _tts.setStartHandler(() => _isSpeaking = true);
     _tts.setCompletionHandler(() {
       _isSpeaking = false;
       _processQueue();
@@ -48,30 +50,24 @@ class TtsService {
     });
   }
 
+  /// FIX SV-001 + SV-012:
+  /// - Cleanup _lastSpoken TRƯỚC khi check cooldown (đúng thứ tự)
+  /// - Set lastSpoken và enqueue chỉ MỘT LẦN (không còn duplicate)
+  /// - Logic đơn giản, linear, dễ đọc
   Future<void> speakWarning(String text) async {
     final now = DateTime.now();
-    final last = _lastSpoken[text];
 
+    // 1. Cleanup các entry đã expired trước khi làm gì
+    _pruneLastSpoken(now);
+
+    // 2. Kiểm tra cooldown
+    final last = _lastSpoken[text];
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
       return;
     }
-    _lastSpoken.removeWhere((_, time) =>
-        now.difference(time).inMilliseconds > AppConstants.ttsCooldownMs * 2);
 
-    _lastSpoken[text] = now;
-    _enqueue(text);
-    if (_lastSpoken.length > 200) {
-      final expiredKeys = _lastSpoken.entries
-          .where((e) =>
-              now.difference(e.value).inMilliseconds >
-              AppConstants.ttsCooldownMs * 2)
-          .map((e) => e.key)
-          .toList();
-      for (final key in expiredKeys) {
-        _lastSpoken.remove(key);
-      }
-    }
+    // 3. Ghi nhớ và enqueue — CHỈ MỘT LẦN (đây là fix chính cho SV-001)
     _lastSpoken[text] = now;
     _enqueue(text);
   }
@@ -99,6 +95,16 @@ class TtsService {
     _lastSpoken.clear();
     await _tts.stop();
     _isSpeaking = false;
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /// Xóa các entry đã quá 2× cooldown — tránh map phình không giới hạn
+  void _pruneLastSpoken(DateTime now) {
+    if (_lastSpoken.length > 100) {
+      _lastSpoken.removeWhere((_, time) =>
+          now.difference(time).inMilliseconds > AppConstants.ttsCooldownMs * 2);
+    }
   }
 
   void _enqueue(String text) {
