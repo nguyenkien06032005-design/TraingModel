@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -32,6 +31,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
   // Tracking objects để phát hiện approaching motion
   Map<String, List<double>> _previousObjects = {};
+  Map<String, int> _consecutiveFrames = {}; // ✅ FIX: Debounce bộ đếm frame
 
   DetectionBloc({
     required LoadModelUsecase         loadModel,
@@ -46,12 +46,12 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     on<DetectionStarted>(_onStarted);
     on<DetectionStopped>(_onStopped);
 
-    // ✅ FIX SV-009: droppable() = nếu _onFrameReceived đang xử lý frame N,
-    // mọi frame mới đến sẽ bị DROP tự động.
-    // Tương đương với manual _isProcessingFrame guard nhưng đúng chuẩn BLoC.
+    // ✅ FIX SV-013: GỠ BỎ droppable() gây SILENT DEADLOCK.
+    // CameraService đã hoàn toàn chịu trách nhiệm stream locking. 
+    // Nếu dùng droppable() thì BLoC sẽ triệt tiêu Event, làm mất callback onDone(),
+    // từ đó khóa cứng CameraService vĩnh viễn.
     on<DetectionFrameReceived>(
       _onFrameReceived,
-      transformer: droppable(),
     );
   }
 
@@ -60,6 +60,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     Emitter<DetectionState> emit,
   ) async {
     _previousObjects = {};
+    _consecutiveFrames = {};
     if (kDebugMode) debugPrint('[DetectionBloc] loading model...');
     emit(const DetectionLoading());
     try {
@@ -74,6 +75,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
   void _onStopped(DetectionStopped event, Emitter<DetectionState> emit) {
     _previousObjects.clear();
+    _consecutiveFrames.clear();
     emit(const DetectionInitial());
     // ✅ FIX SV-007: Gọi qua UseCase, không gọi _repository trực tiếp
     unawaited(_closeModel.close());
@@ -92,8 +94,9 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
       ).timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint('[DetectionBloc] inference timeout — skipping frame');
+          }
           return [];
         },
       );
@@ -128,19 +131,32 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
     final candidates = <DetectionObject>[];
     final currentIndices = <String, int>{};
+    final newConsecutive = <String, int>{};
+
     for (final d in sortedDetections) {
       final currentIndex = currentIndices.update(
         d.label, (value) => value + 1, ifAbsent: () => 0,
       );
+      
+      final presenceKey = '${d.label}_$currentIndex';
+      final prevCount = _consecutiveFrames[presenceKey] ?? 0;
+      final currentCount = prevCount + 1;
+      newConsecutive[presenceKey] = currentCount;
+
       final previousAreas = _previousObjects[d.label];
       final oldArea = previousAreas != null && currentIndex < previousAreas.length
           ? previousAreas[currentIndex]
           : null;
-      if (oldArea == null || d.boundingBox.area > oldArea * 1.3) {
+
+      // ✅ FIX: Debounce vật thể mới 3 frame, Cảnh báo tức thì nếu area > 30%
+      if (oldArea != null && d.boundingBox.area > oldArea * 1.3) {
+        candidates.add(d);
+      } else if (currentCount == 3) {
         candidates.add(d);
       }
     }
     _previousObjects = currentObjects;
+    _consecutiveFrames = newConsecutive;
 
     if (candidates.isEmpty) return;
 

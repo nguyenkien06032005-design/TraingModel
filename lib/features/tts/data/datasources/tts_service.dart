@@ -54,7 +54,7 @@ class TtsService {
   /// - Cleanup _lastSpoken TRƯỚC khi check cooldown (đúng thứ tự)
   /// - Set lastSpoken và enqueue chỉ MỘT LẦN (không còn duplicate)
   /// - Logic đơn giản, linear, dễ đọc
-  Future<void> speakWarning(String text) async {
+  Future<bool> speakWarning(String text) async {
     final now = DateTime.now();
 
     // 1. Cleanup các entry đã expired trước khi làm gì
@@ -64,19 +64,33 @@ class TtsService {
     final last = _lastSpoken[text];
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
-      return;
+      return false;
     }
 
     // 3. Ghi nhớ và enqueue — CHỈ MỘT LẦN (đây là fix chính cho SV-001)
     _lastSpoken[text] = now;
     _enqueue(text);
+    return true;
   }
 
-  Future<void> speakImmediate(String text) async {
+  Future<bool> speakImmediate(String text) async {
+    final now = DateTime.now();
+    _pruneLastSpoken(now);
+
+    // ✅ FIX SV-014: Thêm cooldown cho immediate để chống Stutter
+    final last = _lastSpoken[text];
+    if (last != null &&
+        now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
+      return false;
+    }
+
+    _lastSpoken[text] = now;
+
     await _tts.stop();
     _queue.clear();
     _isSpeaking = false;
     await _speak(text);
+    return true;
   }
 
   Future<void> stop() async {

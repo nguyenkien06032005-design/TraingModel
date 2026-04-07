@@ -178,9 +178,22 @@ class BoundingBoxPainter extends CustomPainter {
   // ✅ FIX SV-011: Version-based shouldRepaint — O(1) thay vì O(n)
   final int _version;
 
-  /// Cache cho TextPainter — tránh tạo lại mỗi frame cho cùng label
-  final Map<String, TextPainter> _textCache = {};
+  /// Cache cho TextPainter — tránh tạo lại mỗi frame cho cùng label (Giữ nguyên bằng static)
+  static final Map<String, TextPainter> _textCache = {};
   static const int _maxCacheEntries = 100;
+
+  // Caching Paint objects - Reused static instances instead of recreating them -> Giảm áp lực GC
+  static final Paint _strokePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.0;
+
+  static final Paint _cornerPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeWidth = 3.0;
+
+  static final Paint _labelPaint = Paint()
+    ..style = PaintingStyle.fill;
 
   BoundingBoxPainter({
     required this.boxes,
@@ -234,27 +247,16 @@ class BoundingBoxPainter extends CustomPainter {
         ? 1.0
         : (1.0 - box.missedFrames / 4.0).clamp(0.2, 1.0);
 
-    // ✅ FIX SV-008: Tạo Paint objects mới mỗi frame thay vì mutate static
-    // Flutter single-threaded nên không phải thread-safety issue, nhưng
-    // mutating static objects là anti-pattern — object lifecycle không rõ ràng
-    final strokePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..color = color.withValues(alpha: 0.85 * opacity)
-      ..strokeWidth = 2.0;
+    // ✅ FIX SV-008 & SV-004 Caching: 
+    // Mutate thuộc tính color trên static Paint instance tiết kiệm hàng ngàn objects tạo ra mỗi giây
+    // Do Flutter command recording ghi nhận state paint ở thời điểm gọi canvas.draw*
+    _strokePaint.color = color.withValues(alpha: 0.85 * opacity);
+    _cornerPaint.color = color.withValues(alpha: opacity);
+    _labelPaint.color = color.withValues(alpha: 0.9);
 
-    final cornerPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..color = color.withValues(alpha: opacity)
-      ..strokeWidth = 3.0;
-
-    final labelPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = color.withValues(alpha: 0.9);
-
-    canvas.drawRect(rect, strokePaint);
-    _drawCorners(canvas, rect, cornerPaint);
-    _drawLabel(canvas, size, rect, box.label, labelPaint);
+    canvas.drawRect(rect, _strokePaint);
+    _drawCorners(canvas, rect, _cornerPaint);
+    _drawLabel(canvas, size, rect, box.label, _labelPaint);
   }
 
   void _drawCorners(Canvas canvas, Rect rect, Paint paint) {
@@ -324,18 +326,6 @@ class BoundingBoxPainter extends CustomPainter {
 
     _textCache[label] = painter;
     return painter;
-  }
-
-  // ✅ FIX SV-004: Dispose tất cả TextPainter còn trong cache
-  // TRƯỚC: dispose() chỉ gọi super.dispose() — tất cả TextPainter bị leak
-  // SAU:   loop qua _textCache, dispose() từng entry, rồi clear map
-  @override
-  void dispose() {
-    for (final tp in _textCache.values) {
-      tp.dispose();
-    }
-    _textCache.clear();
-    super.dispose();
   }
 
   Color _colorForLabel(String label) {

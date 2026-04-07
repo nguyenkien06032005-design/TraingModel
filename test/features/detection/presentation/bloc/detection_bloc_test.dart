@@ -11,7 +11,6 @@ import 'package:safe_vision_app/features/detection/presentation/bloc/detection_b
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_event.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_state.dart';
 
-import 'detection_bloc_fixed_test.dart';
 
 class MockLoadModelUsecase extends Mock implements LoadModelUsecase {}
 

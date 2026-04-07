@@ -40,17 +40,20 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
         return;
       }
 
-      if (event.withVibration) {
-        final bool? hasVibrator = await Vibration.hasVibrator();
+      bool accepted = false;
+      if (event.immediate) {
+        accepted = await _speakWarning.immediate(event.text);
+      } else {
+        accepted = await _speakWarning(event.text);
+      }
+
+      // ✅ FIX SV-014: Gỡ Rung Ảo.
+      // Chỉ kích hoạt motor rung nếu thực sự TTS vượt qua rào cản Cooldown
+      if (accepted && event.withVibration) {
+        final bool hasVibrator = await Vibration.hasVibrator();
         if (hasVibrator == true) {
           Vibration.vibrate(pattern: [0, 300, 150, 300]);
         }
-      }
-
-      if (event.immediate) {
-        await _speakWarning.immediate(event.text);
-      } else {
-        await _speakWarning(event.text);
       }
 
       emit(TtsSpeaking(event.text));

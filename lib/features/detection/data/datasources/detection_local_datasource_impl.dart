@@ -19,7 +19,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
   final DetectionConfig _config;
 
-  Interpreter? _interpreter;
   List<String> _labels = [];
   List<int> _outputShape = [];
   bool _modelLoaded = false;
@@ -43,60 +42,25 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
           .where((l) => l.isNotEmpty)
           .toList();
 
-      final options = InterpreterOptions();
-      var delegateEnabled = false;
+      // Đọc toàn bộ model bytes để gửi qua isolate qua TransferableTypedData
+      final modelData = await rootBundle.load(AssetPaths.modelFile);
+      final modelBytes = modelData.buffer.asUint8List();
 
-      if (Platform.isAndroid) {
-        try {
-          options.addDelegate(
-            GpuDelegateV2(
-              options: GpuDelegateOptionsV2(isPrecisionLossAllowed: true),
-            ),
-          );
-          delegateEnabled = true;
-          if (kDebugMode) debugPrint('[DS] Android GPU delegate enabled');
-        } catch (e) {
-          if (kDebugMode) debugPrint('[DS] Android GPU delegate failed: $e');
-        }
-
-        if (!delegateEnabled) {
-          options.useNnApiForAndroid = true;
-          delegateEnabled = true;
-          if (kDebugMode) debugPrint('[DS] NNAPI enabled');
-        }
-      } else if (Platform.isIOS) {
-        try {
-          options.useMetalDelegateForIOS = true;
-          delegateEnabled = true;
-          if (kDebugMode) debugPrint('[DS] Metal delegate enabled');
-        } catch (e) {
-          if (kDebugMode) debugPrint('[DS] Metal delegate failed: $e');
-        }
-      }
-
-      if (!delegateEnabled) {
-        options.threads = AppConstants.inferenceThreads;
-      }
-
-      _interpreter =
-          await Interpreter.fromAsset(AssetPaths.modelFile, options: options);
-      _outputShape = _interpreter!.getOutputTensor(0).shape;
+      await _spawnIsolate(modelBytes);
 
       if (kDebugMode) {
-        debugPrint('[DS] Model OK — threads=${AppConstants.inferenceThreads}');
-        debugPrint('[DS]   input  = ${_interpreter!.getInputTensor(0).shape}');
+        debugPrint('[DS] Model OK in isolate — threads=${AppConstants.inferenceThreads}');
         debugPrint('[DS]   output = $_outputShape  labels=${_labels.length}');
       }
 
       _modelLoaded = true;
-      await _spawnIsolate();
     } catch (e, st) {
       debugPrint('[DS] loadModel FAILED: $e\n$st');
       throw ModelNotFoundException('Cannot load model: $e');
     }
   }
 
-  Future<void> _spawnIsolate() async {
+  Future<void> _spawnIsolate(Uint8List modelBytes) async {
     _mainReceivePort = ReceivePort();
     _isolate = await Isolate.spawn(_isolateEntry, _mainReceivePort!.sendPort);
     _isolateSendPort = await _mainReceivePort!.first as SendPort;
@@ -104,24 +68,34 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _isolateSendPort!.send(_IsolateInitMsg(
       labels: List.unmodifiable(_labels),
       inputSize: AppConstants.inputSize,
-      outputShape: List.unmodifiable(_outputShape),
+      modelBytes: TransferableTypedData.fromList([modelBytes]),
       ackPort: ackPort.sendPort,
     ));
-    await ackPort.first;
+    final ack = await ackPort.first as _IsolateInitAck;
     ackPort.close();
+    
+    if (ack.error != null) throw Exception(ack.error);
+    _outputShape = ack.outputShape;
     if (kDebugMode) debugPrint('[DS] Isolate ready + init confirmed');
   }
 
   Future<void> _killAndRespawnIsolate() async {
     if (kDebugMode) debugPrint('[DS] Respawning isolate...');
     try {
+      final shutdownAck = ReceivePort();
+      if (_isolateSendPort != null) {
+        _isolateSendPort!.send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
+        await shutdownAck.first.timeout(const Duration(milliseconds: 500)).catchError((_) => null);
+      }
+      shutdownAck.close();
       _isolate?.kill(priority: Isolate.immediate);
       _mainReceivePort?.close();
     } catch (_) {}
     _isolate = null;
     _mainReceivePort = null;
     _isolateSendPort = null;
-    await _spawnIsolate();
+    final modelData = await rootBundle.load(AssetPaths.modelFile);
+    await _spawnIsolate(modelData.buffer.asUint8List());
     if (kDebugMode) debugPrint('[DS] Isolate respawned');
   }
 
@@ -139,8 +113,9 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     CameraImage image, {
     required int rotationDegrees,
   }) async {
-    if (!_modelLoaded || _interpreter == null || _isolateSendPort == null)
+    if (!_modelLoaded || _isolateSendPort == null) {
       return [];
+    }
     if (_isolateBusy) return [];
     _isolateBusy = true;
 
@@ -161,7 +136,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
         planePixelStrides: pixelStrides,
         imageWidth: image.width,
         imageHeight: image.height,
-        interpreterAddress: _interpreter!.address,
         rotationDegrees: rotationDegrees,
         confidenceThreshold: _config.confidenceThreshold,
         iouThreshold: _config.iouThreshold,
@@ -227,8 +201,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     _mainReceivePort?.close();
     _mainReceivePort = null;
     _isolateSendPort = null;
-    _interpreter?.close();
-    _interpreter = null;
     _modelLoaded = false;
     _isolateBusy = false;
     _consecutiveTimeouts = 0;
@@ -239,7 +211,6 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 // ─── Isolate-side globals ───────────────────────────────────────────────────
 
 Interpreter? _cachedInterpreter;
-int _cachedAddress = 0;
 Float32List? _cachedTensor;
 Uint8List? _cachedOutputBytes;
 Float32List? _cachedOutputFloats;
@@ -256,8 +227,38 @@ void _isolateEntry(SendPort mainSendPort) {
     if (msg is _IsolateInitMsg) {
       _initLabels = msg.labels;
       _initInputSize = msg.inputSize;
-      _initOutputShape = msg.outputShape;
-      msg.ackPort.send(const _IsolateInitAck());
+      
+      try {
+        final options = InterpreterOptions();
+        var delegateEnabled = false;
+
+        if (Platform.isAndroid) {
+          try {
+            options.addDelegate(GpuDelegateV2(
+              options: GpuDelegateOptionsV2(isPrecisionLossAllowed: true),
+            ));
+            delegateEnabled = true;
+          } catch (_) {}
+
+          if (!delegateEnabled) {
+            options.useNnApiForAndroid = true;
+            delegateEnabled = true;
+          }
+        } else if (Platform.isIOS) {
+          try {
+            options.useMetalDelegateForIOS = true;
+            delegateEnabled = true;
+          } catch (_) {}
+        }
+        if (!delegateEnabled) options.threads = AppConstants.inferenceThreads;
+
+        _cachedInterpreter = Interpreter.fromBuffer(msg.modelBytes.materialize().asUint8List(), options: options);
+        _initOutputShape = _cachedInterpreter!.getOutputTensor(0).shape;
+        
+        msg.ackPort.send(_IsolateInitAck(outputShape: _initOutputShape));
+      } catch (e) {
+        msg.ackPort.send(_IsolateInitAck(outputShape: const [], error: e.toString()));
+      }
     } else if (msg is _IsolateShutdown) {
       try {
         _cachedInterpreter?.close();
@@ -265,7 +266,7 @@ void _isolateEntry(SendPort mainSendPort) {
       } catch (e) {
         debugPrint('[Isolate] error closing interpreter: $e');
       }
-      msg.replyPort.send(const _IsolateInitAck());
+      msg.replyPort.send(const _IsolateInitAck(outputShape: []));
       jobPort.close();
       Isolate.exit();
     } else if (msg is _InferenceJob) {
@@ -280,11 +281,6 @@ void _isolateEntry(SendPort mainSendPort) {
 
 void _processJob(_InferenceJob job) {
   try {
-    if (_cachedAddress != job.interpreterAddress) {
-      _cachedInterpreter?.close();
-      _cachedInterpreter = Interpreter.fromAddress(job.interpreterAddress);
-      _cachedAddress = job.interpreterAddress;
-    }
     final interpreter = _cachedInterpreter!;
 
     final planes = <Uint8List>[
@@ -470,15 +466,19 @@ class _RawBox {
 class _IsolateInitMsg {
   final List<String> labels;
   final int inputSize;
-  final List<int> outputShape;
+  final TransferableTypedData modelBytes;
   final SendPort ackPort;
   const _IsolateInitMsg({
     required this.labels, required this.inputSize,
-    required this.outputShape, required this.ackPort,
+    required this.modelBytes, required this.ackPort,
   });
 }
 
-class _IsolateInitAck { const _IsolateInitAck(); }
+class _IsolateInitAck { 
+  final List<int> outputShape;
+  final String? error;
+  const _IsolateInitAck({required this.outputShape, this.error});
+}
 
 class _IsolateShutdown {
   final SendPort replyPort;
@@ -490,14 +490,14 @@ class _InferenceJob {
   final List<TransferableTypedData> planeBytes;
   final List<int> planeRowStrides;
   final List<int> planePixelStrides;
-  final int imageWidth, imageHeight, interpreterAddress, rotationDegrees;
+  final int imageWidth, imageHeight, rotationDegrees;
   final double confidenceThreshold, iouThreshold;
   final int maxDetections;
   const _InferenceJob({
     required this.replyPort, required this.planeBytes,
     required this.planeRowStrides, required this.planePixelStrides,
     required this.imageWidth, required this.imageHeight,
-    required this.interpreterAddress, required this.rotationDegrees,
+    required this.rotationDegrees,
     required this.confidenceThreshold, required this.iouThreshold,
     required this.maxDetections,
   });

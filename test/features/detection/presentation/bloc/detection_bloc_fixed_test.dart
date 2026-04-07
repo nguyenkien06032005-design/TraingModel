@@ -1,4 +1,3 @@
-import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';

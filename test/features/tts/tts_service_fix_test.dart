@@ -25,7 +25,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 class TestableTtsService {
   final List<String> _queue = [];
   final Map<String, DateTime> _lastSpoken = {};
-  bool _isSpeaking = false;
+  final bool _isSpeaking = false;
 
   static const int ttsCooldownMs = 3000;
   static const int maxLastSpoken = 100;
