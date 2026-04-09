@@ -44,14 +44,14 @@ void main() {
       expect(find.text('person'),   findsNothing);
     });
 
-    testWidgets('menampilkan label saat ada satu deteksi', (tester) async {
+    testWidgets('hiển thị nhãn khi có một vật thể được phát hiện', (tester) async {
       await tester.pumpWidget(
           buildWidget([makeDetection(label: 'bicycle')]));
 
       expect(find.textContaining('bicycle'), findsOneWidget);
     });
 
-    testWidgets('menampilkan semua label untuk beberapa deteksi', (tester) async {
+    testWidgets('hiển thị đầy đủ nhãn cho nhiều vật thể được phát hiện', (tester) async {
       final detections = [
         makeDetection(label: 'person',  confidence: 0.9),
         makeDetection(label: 'bicycle', confidence: 0.8),
@@ -64,7 +64,7 @@ void main() {
       expect(find.textContaining('car'),     findsOneWidget);
     });
 
-    testWidgets('menampilkan jumlah deteksi', (tester) async {
+    testWidgets('hiển thị số lượng vật thể được phát hiện', (tester) async {
       await tester.pumpWidget(buildWidget([
         makeDetection(label: 'person'),
         makeDetection(label: 'car'),
@@ -73,7 +73,7 @@ void main() {
       expect(find.textContaining('2'), findsWidgets);
     });
 
-    testWidgets('menampilkan persentase confidence', (tester) async {
+    testWidgets('hiển thị phần trăm độ tin cậy', (tester) async {
       await tester.pumpWidget(buildWidget([
         makeDetection(label: 'person', confidence: 0.85),
       ]));
@@ -81,7 +81,7 @@ void main() {
       expect(find.textContaining('85'), findsWidgets);
     });
 
-    testWidgets('menampilkan maksimal maxItems deteksi', (tester) async {
+    testWidgets('chỉ hiển thị tối đa số lượng theo maxItems', (tester) async {
       const testMaxItems = 5;
       final detections   = List.generate(
         10,
@@ -178,7 +178,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    test('shouldRepaint mengembalikan true saat boxes berbeda', () {
+    test('shouldRepaint trả về true khi danh sách box khác nhau', () {
       final a = BoundingBoxPainter(boxes: [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
@@ -195,7 +195,7 @@ void main() {
       expect(a.shouldRepaint(b), isTrue);
     });
 
-    test('shouldRepaint mengembalikan false saat boxes identik', () {
+    test('shouldRepaint trả về false khi danh sách box giống hệt nhau', () {
       final painter = BoundingBoxPainter(boxes: []);
       expect(painter.shouldRepaint(BoundingBoxPainter(boxes: [])), isFalse);
     });
@@ -217,7 +217,7 @@ void main() {
           boundingBox: BoundingBox(left: left, top: top, width: w, height: h),
         );
 
-    test('mengembalikan list kosong saat diupdate dengan deteksi kosong', () {
+    test('trả về danh sách rỗng khi cập nhật với tập phát hiện rỗng', () {
       final tracker = BoxTracker();
       expect(tracker.update([]), isEmpty);
     });
@@ -239,7 +239,7 @@ void main() {
       expect(result.length, 1);
     });
 
-    test('track dihapus setelah maxTrackAge tanpa deteksi', () {
+    test('track bị xóa sau maxTrackAge nếu không còn phát hiện', () {
       final tracker = BoxTracker();
       final start   = DateTime(2026, 1, 1, 12, 0, 0);
 
@@ -252,7 +252,7 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('dua objek berbeda di-track secara independen', () {
+    test('hai vật thể khác nhau được theo dõi độc lập', () {
       final tracker = BoxTracker();
       final result  = tracker.update([
         make(label: 'person',  left: 0.1),
@@ -263,21 +263,21 @@ void main() {
       expect(result.map((b) => b.label).toSet(), {'person', 'bicycle'});
     });
 
-    test('clear() mengosongkan tracker', () {
+    test('clear() làm rỗng tracker', () {
       final tracker = BoxTracker();
       tracker.update([make()]);
       tracker.clear();
       expect(tracker.update([]), isEmpty);
     });
 
-    test('track baru dimulai dengan missedFrames = 0', () {
+    test('track mới bắt đầu với missedFrames = 0', () {
       final tracker = BoxTracker();
       final result  = tracker.update([make(label: 'y')]);
 
       expect(result.single.missedFrames, 0);
     });
 
-    test('track yang cocok mereset missedFrames ke 0 setelah update', () {
+    test('track khớp sẽ đặt missedFrames về 0 sau khi cập nhật', () {
       final tracker = BoxTracker();
       final start   = DateTime(2026, 1, 1, 12, 0, 0);
 

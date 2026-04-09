@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 // the real cooldown and queue logic without depending on FlutterTts.
 // This lets the tests verify:
 // 1. Per-text cooldown: the same text is blocked within a time window.
-// 2. Queue deduplication: text is never added twice to the queue.
+// 2. Khử trùng lặp hàng đợi: cùng một nội dung không bao giờ được thêm hai lần.
 // 3. _lastSpoken management: the map does not grow without bounds.
 //
 // Full validation of speak, pause, and stop still requires an integration
@@ -67,27 +67,27 @@ void main() {
     service = TestableTtsService();
   });
 
-  // Invariant: text is enqueued only once
+  // Invariant: mỗi nội dung chỉ được thêm vào hàng đợi một lần.
 
-  group('speakWarning — satu kali enqueue per penerimaan', () {
-    test('memanggil speakWarning sekali menambahkan text ke antrian tepat satu kali',
+  group('speakWarning — chỉ enqueue một lần cho mỗi lần chấp nhận', () {
+    test('gọi speakWarning một lần thì chỉ thêm đúng một phần tử vào hàng đợi',
         () async {
       await service.speakWarning('Cảnh báo! Người đi bộ phía trước');
 
       expect(service.queueLength, equals(1),
-          reason: 'Text harus dienqueue tepat satu kali, bukan dua kali');
+          reason: 'Nội dung chỉ được đưa vào hàng đợi đúng một lần');
       expect(service.queue.first, 'Cảnh báo! Người đi bộ phía trước');
     });
 
-    test('panggilan kedua dengan text yang sama diblokir oleh cooldown', () async {
+    test('lần gọi thứ hai với cùng nội dung sẽ bị chặn bởi cooldown', () async {
       await service.speakWarning('xe đạp bên trái');
       await service.speakWarning('xe đạp bên trái');
 
       expect(service.queueLength, equals(1),
-          reason: 'Cooldown harus memblokir panggilan kedua dengan text yang sama');
+          reason: 'Cooldown phải chặn lần gọi thứ hai với cùng nội dung');
     });
 
-    test('text berbeda bisa dienqueue bersama-sama', () async {
+    test('các nội dung khác nhau có thể cùng vào hàng đợi', () async {
       await service.speakWarning('vật thể A');
       await service.speakWarning('vật thể B');
 
@@ -95,7 +95,7 @@ void main() {
       expect(service.queue, containsAll(['vật thể A', 'vật thể B']));
     });
 
-    test('_lastSpoken mencatat timestamp setelah penerimaan', () async {
+    test('_lastSpoken ghi lại thời điểm sau khi chấp nhận phát', () async {
       const text = 'người đi bộ';
       final before = DateTime.now();
       await service.speakWarning(text);
@@ -111,21 +111,21 @@ void main() {
 
   // Cooldown logic
 
-  group('speakWarning — cooldown per text', () {
-    test('text yang sama dalam jendela cooldown mengembalikan null (diblokir)',
+  group('speakWarning — cooldown theo từng nội dung', () {
+    test('cùng một nội dung trong cửa sổ cooldown sẽ trả về null',
         () async {
       const text = 'xe máy';
       final result1 = await service.speakWarning(text);
       final result2 = await service.speakWarning(text);
 
-      expect(result1, equals(text), reason: 'Panggilan pertama harus diterima');
-      expect(result2, isNull, reason: 'Panggilan kedua dalam cooldown harus diblokir');
+      expect(result1, equals(text), reason: 'Lần gọi đầu tiên phải được chấp nhận');
+      expect(result2, isNull, reason: 'Lần gọi thứ hai trong cooldown phải bị chặn');
     });
 
-    test('text berbeda tidak saling memblokir cooldown masing-masing', () async {
-      final r1 = await service.speakWarning('text A');
-      final r2 = await service.speakWarning('text B');
-      final r3 = await service.speakWarning('text C');
+    test('nội dung khác nhau không chặn cooldown của nhau', () async {
+      final r1 = await service.speakWarning('văn bản A');
+      final r2 = await service.speakWarning('văn bản B');
+      final r3 = await service.speakWarning('văn bản C');
 
       expect(r1, isNotNull);
       expect(r2, isNotNull);
@@ -133,27 +133,27 @@ void main() {
       expect(service.queueLength, equals(3));
     });
 
-    test('_lastSpoken tidak tumbuh tidak terbatas — diprune saat lebih dari 100',
+    test('_lastSpoken không tăng vô hạn và sẽ được dọn khi vượt quá 100 mục',
         () async {
       for (int i = 0; i < 101; i++) {
-        await service.speakWarning('text_$i');
+        await service.speakWarning('văn_bản_$i');
       }
       // Pruning starts after 100 entries so growth stays bounded.
       expect(service.lastSpoken.length, lessThanOrEqualTo(101));
     });
   });
 
-  // Queue deduplication
+  // Khử trùng lặp hàng đợi
 
-  group('Queue deduplication', () {
-    test('text yang sama tidak ditambahkan dua kali ke antrian', () async {
-      await service.speakWarning('duplicate text');
+  group('Khử trùng lặp hàng đợi', () {
+    test('cùng một nội dung không bị thêm hai lần vào hàng đợi', () async {
+      await service.speakWarning('nội dung trùng lặp');
 
-      expect(service.queue.where((t) => t == 'duplicate text').length,
+      expect(service.queue.where((t) => t == 'nội dung trùng lặp').length,
           equals(1));
     });
 
-    test('string kosong diterima tanpa crash', () async {
+    test('chuỗi rỗng vẫn được xử lý mà không crash', () async {
       expect(() => service.speakWarning(''), returnsNormally);
     });
   });

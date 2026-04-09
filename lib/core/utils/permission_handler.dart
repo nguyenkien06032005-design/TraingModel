@@ -19,7 +19,7 @@ class AppPermissionHandler {
     final status = await Permission.microphone.request();
     if (!status.isGranted) {
       throw const PermissionException(
-        'Quyền microphone bị từ chối.',
+        'Quyền micro bị từ chối.',
       );
     }
   }

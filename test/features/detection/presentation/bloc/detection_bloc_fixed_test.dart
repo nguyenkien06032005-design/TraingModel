@@ -78,7 +78,7 @@ void main() {
 
   // Initial state
 
-  test('initial state adalah DetectionInitial', () {
+  test('state ban đầu là DetectionInitial', () {
     final bloc = buildBloc();
     expect(bloc.state, const DetectionInitial());
     bloc.close();
@@ -88,7 +88,7 @@ void main() {
 
   group('DetectionStarted', () {
     blocTest<DetectionBloc, DetectionState>(
-      'emits [Loading, ModelReady] saat sukses',
+      'phát ra [Loading, ModelReady] khi khởi tạo thành công',
       build: buildBloc,
       act: (bloc) => bloc.add(const DetectionStarted()),
       expect: () => [const DetectionLoading(), const DetectionModelReady()],
@@ -96,7 +96,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'emits [Loading, Failure] saat loadModel throw',
+      'phát ra [Loading, Failure] khi loadModel ném lỗi',
       build: () {
         when(() => mockLoadModel.call(any()))
             .thenThrow(Exception('model not found'));
@@ -107,7 +107,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'state tracking direset setiap kali DetectionStarted dipanggil',
+      'trạng thái theo dõi được đặt lại mỗi khi gọi DetectionStarted',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const DetectionStarted());
@@ -127,7 +127,7 @@ void main() {
 
   group('DetectionStopped', () {
     blocTest<DetectionBloc, DetectionState>(
-      'emits Initial dan memanggil closeModel',
+      'phát ra Initial và gọi closeModel',
       build: buildBloc,
       seed: () => const DetectionModelReady(),
       act: (bloc) => bloc.add(const DetectionStopped()),
@@ -136,7 +136,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'closeModel dipanggil meskipun state awal adalah Initial',
+      'vẫn gọi closeModel dù state ban đầu là Initial',
       build: buildBloc,
       act: (bloc) => bloc.add(const DetectionStopped()),
       expect: () => [const DetectionInitial()],
@@ -146,9 +146,9 @@ void main() {
 
   // Concurrent frames and droppable behavior
 
-  group('DetectionFrameReceived — droppable frame behavior', () {
+  group('DetectionFrameReceived — hành vi xử lý frame', () {
     blocTest<DetectionBloc, DetectionState>(
-      'frame concurrent: hanya satu yang diproses sementara yang lain menunggu',
+      'nhiều frame đến cùng lúc: chỉ một frame được xử lý tại một thời điểm',
       build: () {
         when(() => mockDetectFromFrame(any(),
                 rotationDegrees: any(named: 'rotationDegrees')))
@@ -173,7 +173,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'frame sekuensial dengan jeda: keduanya diproses',
+      'hai frame tuần tự có độ trễ đều được xử lý',
       build: () {
         when(() => mockDetectFromFrame(any(),
                 rotationDegrees: any(named: 'rotationDegrees')))
@@ -197,7 +197,7 @@ void main() {
 
   // Warning callback
 
-  group('Warning callback', () {
+  group('Callback cảnh báo', () {
     String? capturedText;
     bool? capturedImmediate;
     bool? capturedVibration;
@@ -209,7 +209,7 @@ void main() {
     });
 
     blocTest<DetectionBloc, DetectionState>(
-      'object berbahaya → callback immediate=true withVibration=true',
+      'vật thể nguy hiểm → callback có immediate=true và withVibration=true',
       build: () {
         when(() => mockDetectFromFrame(any(),
                 rotationDegrees: any(named: 'rotationDegrees')))
@@ -236,7 +236,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'object aman → callback immediate=false withVibration=false',
+      'vật thể an toàn → callback có immediate=false và withVibration=false',
       build: () {
         when(() => mockDetectFromFrame(any(),
                 rotationDegrees: any(named: 'rotationDegrees')))
@@ -260,7 +260,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'deteksi kosong → tidak ada callback',
+      'không có phát hiện nào → không gọi callback',
       build: () {
         when(() => mockDetectFromFrame(any(),
                 rotationDegrees: any(named: 'rotationDegrees')))
@@ -281,15 +281,15 @@ void main() {
       ],
       verify: (_) {
         expect(capturedText, isNull,
-            reason: 'Tidak ada detection → tidak ada callback');
+            reason: 'Không có vật thể nào được phát hiện nên không được gọi callback');
       },
     );
   });
 
   // onDone callback
 
-  group('onDone callback', () {
-    test('dipanggil setelah inference berhasil', () async {
+  group('Callback onDone', () {
+    test('được gọi sau khi suy luận thành công', () async {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async => []);
@@ -307,7 +307,7 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 50));
 
       expect(doneCalled, isTrue,
-          reason: 'onDone() harus dipanggil setelah setiap frame');
+          reason: 'onDone() phải được gọi sau mỗi frame');
       await bloc.close();
     });
   });
@@ -315,7 +315,7 @@ void main() {
   // CloseModelUsecase contract
 
   group('CloseModelUsecase', () {
-    test('call(NoParams()) mendelegasikan ke repository.closeModel()',
+    test('call(NoParams()) chuyển tiếp sang repository.closeModel()',
         () async {
       final mock = MockCloseModelUsecase();
       when(() => mock.call(any())).thenAnswer((_) async {});

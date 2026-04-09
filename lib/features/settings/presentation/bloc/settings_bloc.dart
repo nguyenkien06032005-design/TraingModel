@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/config/detection_config.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../../tts/domain/usecases/configure_tts_usecase.dart';
 import '../../../tts/domain/usecases/stop_speaking_usecase.dart';
@@ -47,9 +48,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     final confThresh   = await _repository.getConfidenceThreshold();
     final voiceEnabled = await _repository.getVoiceEnabled();
     final showPanel    = await _repository.getShowConfidencePanel();
-    final language     = await _repository.getTtsLanguage();
+    final language     = AppConstants.ttsLanguage;
 
     _detectionConfig.setConfidenceThreshold(confThresh);
+    await _repository.setTtsLanguage(language);
     await _configureTts(speechRate: speechRate, language: language);
 
     emit(state.copyWith(
@@ -108,11 +110,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     SettingsTtsLanguageChanged e,
     Emitter<SettingsState> emit,
   ) async {
-    await _repository.setTtsLanguage(e.lang);
+    final language = AppConstants.ttsLanguage;
+    await _repository.setTtsLanguage(language);
     await _configureTts(
-      language:   e.lang,
+      language:   language,
       speechRate: state.speechRate,
     );
-    emit(state.copyWith(ttsLanguage: e.lang));
+    emit(state.copyWith(ttsLanguage: language));
   }
 }

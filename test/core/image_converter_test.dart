@@ -10,7 +10,7 @@ void main() {
   // LetterboxResult
 
   group('LetterboxResult', () {
-    test('menyimpan semua field dengan benar', () {
+    test('lưu đầy đủ các trường dữ liệu', () {
       final tensor = Float32List(640 * 640 * 3);
       final result = LetterboxResult(
         inputTensor: tensor,
@@ -41,7 +41,7 @@ void main() {
       return image;
     }
 
-    test('gambar portrait — skala dan padding horizontal benar', () {
+    test('ảnh dọc — tỉ lệ và phần đệm ngang chính xác', () {
       final image  = makeImage(240, 320);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
@@ -54,7 +54,7 @@ void main() {
       expect(result.padTop,     closeTo(0.0,   0.002));
     });
 
-    test('gambar landscape — skala dan padding vertikal benar', () {
+    test('ảnh ngang — tỉ lệ và phần đệm dọc chính xác', () {
       final image  = makeImage(320, 240);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
@@ -64,7 +64,7 @@ void main() {
       expect(result.padTop,  closeTo(0.125, 0.002));
     });
 
-    test('gambar persegi — tidak ada padding', () {
+    test('ảnh vuông — không có phần đệm', () {
       final image  = makeImage(320, 320);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
@@ -73,7 +73,7 @@ void main() {
       expect(result.padTop,  closeTo(0.0, 0.002));
     });
 
-    test('gambar sudah berukuran inputSize — scale=1.0 tanpa padding', () {
+    test('ảnh đã đúng kích thước inputSize — scale=1.0 và không có phần đệm', () {
       final image  = makeImage(640, 640);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
@@ -82,14 +82,14 @@ void main() {
       expect(result.padTop,  closeTo(0.0, 0.002));
     });
 
-    test('tensor output berukuran inputSize × inputSize × 3', () {
+    test('tensor đầu ra có kích thước inputSize × inputSize × 3', () {
       final image  = makeImage(100, 200);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
       expect(result.inputTensor.length, equals(inputSize * inputSize * 3));
     });
 
-    test('nilai tensor ternormalisasi dalam rentang [0.0, 1.0]', () {
+    test('giá trị tensor được chuẩn hóa trong khoảng [0.0, 1.0]', () {
       final image  = makeImage(320, 240, r: 255, g: 0, b: 128);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
 
@@ -99,7 +99,7 @@ void main() {
       }
     });
 
-    test('area padding diisi dengan abu-abu ≈ 114/255', () {
+    test('vùng đệm được điền màu xám ≈ 114/255', () {
       // Landscape image: the first and last rows are vertical padding.
       final image  = makeImage(320, 240, r: 255, g: 0, b: 0);
       final result = ImageConverter.letterboxAndNormalize(image, inputSize);
@@ -115,7 +115,7 @@ void main() {
   group('ImageConverter.unLetterboxBox', () {
     const inputSize = 640;
 
-    test('bounding box tengah dipetakan ke tengah gambar asli', () {
+    test('hộp giới hạn ở giữa được ánh xạ về giữa ảnh gốc', () {
       // Setup: portrait image 240x320, scale = 2.0, padLeft = 0.125.
       // The box is centered in model output space.
       final box = ImageConverter.unLetterboxBox(
@@ -133,7 +133,7 @@ void main() {
       expect(box.height, closeTo(0.5,   0.01));
     });
 
-    test('box di luar batas di-clamp ke [0.0, 1.0]', () {
+    test('hộp vượt biên được ép vào khoảng [0.0, 1.0]', () {
       final box = ImageConverter.unLetterboxBox(
         cx: 0.0,  cy: 0.5,
         bw: 0.1,  bh: 0.3,
@@ -149,7 +149,7 @@ void main() {
       expect(box.height, greaterThanOrEqualTo(0.0));
     });
 
-    test('box penuh (1.0×1.0) dipetakan ke seluruh gambar asli', () {
+    test('hộp đầy đủ (1.0×1.0) được ánh xạ phủ toàn bộ ảnh gốc', () {
       final box = ImageConverter.unLetterboxBox(
         cx: 0.5, cy: 0.5,
         bw: 1.0, bh: 1.0,
@@ -165,7 +165,7 @@ void main() {
       expect(box.height, closeTo(1.0, 0.01));
     });
 
-    test('nilai output selalu dalam [0.0, 1.0] meskipun input di luar rentang',
+    test('giá trị đầu ra luôn nằm trong [0.0, 1.0] dù đầu vào vượt phạm vi',
         () {
       final box = ImageConverter.unLetterboxBox(
         cx: 1.5, cy: 1.5,
@@ -199,7 +199,7 @@ void main() {
       return ([y, u, v], [w, w ~/ 2, w ~/ 2], [1, 1, 1]);
     }
 
-    test('gambar output memiliki dimensi yang benar', () {
+    test('ảnh đầu ra có kích thước chính xác', () {
       const w = 8, h = 8;
       final (planes, rowStrides, pixelStrides) = makeYuvPlanes(w, h);
 
@@ -210,7 +210,7 @@ void main() {
       expect(result.height, h);
     });
 
-    test('UV netral (128, 128) menghasilkan piksel abu-abu terang dari nilai Y', () {
+    test('UV trung tính (128, 128) tạo ra điểm ảnh xám sáng từ giá trị Y', () {
       const w = 4, h = 4;
       final (planes, rowStrides, pixelStrides) = makeYuvPlanes(w, h);
 
@@ -240,8 +240,8 @@ void main() {
 
   // Letterbox round-trip consistency
 
-  group('Konsistensi round-trip letterbox → unLetterbox', () {
-    test('koordinat yang di-unLetterbox dari hasil letterbox tetap dalam [0, 1]',
+  group('Tính nhất quán round-trip letterbox → unLetterbox', () {
+    test('tọa độ sau khi unLetterbox từ kết quả letterbox vẫn nằm trong [0, 1]',
         () {
       const inputSize = 640;
 

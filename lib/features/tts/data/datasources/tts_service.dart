@@ -36,7 +36,7 @@ class TtsService {
     double? pitch,
     double? volume,
   }) async {
-    if (language   != null) _language   = language;
+    _language = AppConstants.ttsLanguage;
     if (speechRate != null) _speechRate = speechRate;
     if (pitch      != null) _pitch      = pitch;
     if (volume     != null) _volume     = volume;

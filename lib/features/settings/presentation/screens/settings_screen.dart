@@ -62,21 +62,9 @@ class SettingsScreen extends StatelessWidget {
 
               
               ListTile(
-                title: const Text('Ngôn ngữ'),
-                trailing: DropdownButton<String>(
-                  value: state.ttsLanguage,
-                  items: const [
-                    DropdownMenuItem(value: 'vi-VN', child: Text('Tiếng Việt')),
-                    DropdownMenuItem(value: 'en-US', child: Text('English')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) {
-                      context
-                          .read<SettingsBloc>()
-                          .add(SettingsTtsLanguageChanged(v));
-                    }
-                  },
-                ),
+                title: const Text('Ngôn ngữ giọng đọc'),
+                subtitle: const Text('Hệ thống chỉ sử dụng tiếng Việt'),
+                trailing: const Text('Tiếng Việt'),
               ),
 
               const Divider(height: 32),

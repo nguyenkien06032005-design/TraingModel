@@ -53,11 +53,15 @@ class LocalStorageService {
 
   Future<String> getTtsLanguage() async {
     final p = await _prefs;
-    return p.getString(_keyTtsLanguage) ?? AppConstants.ttsLanguage;
+    final stored = p.getString(_keyTtsLanguage);
+    if (stored != AppConstants.ttsLanguage) {
+      await p.setString(_keyTtsLanguage, AppConstants.ttsLanguage);
+    }
+    return AppConstants.ttsLanguage;
   }
 
   Future<void> setTtsLanguage(String lang) async {
     final p = await _prefs;
-    await p.setString(_keyTtsLanguage, lang);
+    await p.setString(_keyTtsLanguage, AppConstants.ttsLanguage);
   }
 }

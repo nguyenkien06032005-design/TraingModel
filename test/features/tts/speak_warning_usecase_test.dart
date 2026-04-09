@@ -32,8 +32,8 @@ void main() {
 
     setUp(() => usecase = SpeakWarningUsecase(mockRepo));
 
-    test('call() delegates to repository.speakWarning()', () async {
-      const text = 'Pedestrian detected ahead, close';
+    test('call() chuyển tiếp sang repository.speakWarning()', () async {
+      const text = 'Cảnh báo! Người đi bộ ở phía trước, gần.';
       // speakWarning returns Future<bool> — stub must match the declared type.
       when(() => mockRepo.speakWarning(text)).thenAnswer((_) async => true);
 
@@ -42,8 +42,8 @@ void main() {
       verify(() => mockRepo.speakWarning(text)).called(1);
     });
 
-    test('immediate() delegates to repository.speakImmediate()', () async {
-      const text = 'Warning! Pedestrian very close';
+    test('immediate() chuyển tiếp sang repository.speakImmediate()', () async {
+      const text = 'Cảnh báo! Người đi bộ ở phía trước, rất gần.';
       // speakImmediate returns Future<bool> — stub must match the declared type.
       when(() => mockRepo.speakImmediate(text)).thenAnswer((_) async => true);
 
@@ -52,7 +52,7 @@ void main() {
       verify(() => mockRepo.speakImmediate(text)).called(1);
     });
 
-    test('call() does not invoke speakImmediate()', () async {
+    test('call() không gọi speakImmediate()', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async => true);
 
       await usecase('test');
@@ -60,7 +60,7 @@ void main() {
       verifyNever(() => mockRepo.speakImmediate(any()));
     });
 
-    test('immediate() does not invoke speakWarning()', () async {
+    test('immediate() không gọi speakWarning()', () async {
       when(() => mockRepo.speakImmediate(any())).thenAnswer((_) async => true);
 
       await usecase.immediate('test');
@@ -68,8 +68,8 @@ void main() {
       verifyNever(() => mockRepo.speakWarning(any()));
     });
 
-    test('passes text exactly to repository', () async {
-      const exactText = 'Bicycle detected on the left, medium distance';
+    test('truyền nguyên văn nội dung sang repository', () async {
+      const exactText = 'Cảnh báo! Xe đạp ở bên trái, khoảng cách trung bình.';
       when(() => mockRepo.speakWarning(exactText)).thenAnswer((_) async => true);
 
       await usecase(exactText);
@@ -77,21 +77,21 @@ void main() {
       verify(() => mockRepo.speakWarning(exactText)).called(1);
     });
 
-    test('call() meneruskan exception dari repository', () async {
+    test('call() truyền tiếp exception từ repository', () async {
       when(() => mockRepo.speakWarning(any()))
           .thenThrow(Exception('TTS engine error'));
 
       expect(() => usecase('text'), throwsException);
     });
 
-    test('immediate() meneruskan exception dari repository', () async {
+    test('immediate() truyền tiếp exception từ repository', () async {
       when(() => mockRepo.speakImmediate(any()))
           .thenThrow(Exception('TTS engine error'));
 
       expect(() => usecase.immediate('text'), throwsException);
     });
 
-    test('forwards empty string to repository', () async {
+    test('chuỗi rỗng vẫn được chuyển tiếp sang repository', () async {
       when(() => mockRepo.speakWarning('')).thenAnswer((_) async => true);
 
       await usecase('');
@@ -99,12 +99,12 @@ void main() {
       verify(() => mockRepo.speakWarning('')).called(1);
     });
 
-    test('multiple calls are each delegated independently', () async {
+    test('mỗi lần gọi đều được chuyển tiếp độc lập', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async => true);
 
-      await usecase('first');
-      await usecase('second');
-      await usecase('third');
+      await usecase('cảnh báo thứ nhất');
+      await usecase('cảnh báo thứ hai');
+      await usecase('cảnh báo thứ ba');
 
       verify(() => mockRepo.speakWarning(any())).called(3);
     });
@@ -117,7 +117,7 @@ void main() {
 
     setUp(() => usecase = StopSpeakingUsecase(mockRepo));
 
-    test('call() mendelegasikan ke repository.stop()', () async {
+    test('call() chuyển tiếp sang repository.stop()', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
       await usecase();
@@ -125,7 +125,7 @@ void main() {
       verify(() => mockRepo.stop()).called(1);
     });
 
-    test('tidak memanggil speak methods', () async {
+    test('không gọi các hàm phát giọng nói', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
       await usecase();
@@ -134,13 +134,13 @@ void main() {
       verifyNever(() => mockRepo.speakImmediate(any()));
     });
 
-    test('meneruskan exception dari repository', () async {
+    test('truyền tiếp exception từ repository', () async {
       when(() => mockRepo.stop()).thenThrow(Exception('stop failed'));
 
       expect(() => usecase(), throwsException);
     });
 
-    test('beberapa panggilan stop masing-masing didelegasikan', () async {
+    test('nhiều lần gọi stop đều được chuyển tiếp đầy đủ', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
       await usecase();
@@ -157,7 +157,7 @@ void main() {
 
     setUp(() => usecase = PauseSpeakingUsecase(mockRepo));
 
-    test('call() mendelegasikan ke repository.pause()', () async {
+    test('call() chuyển tiếp sang repository.pause()', () async {
       when(() => mockRepo.pause()).thenAnswer((_) async {});
 
       await usecase();
@@ -165,7 +165,7 @@ void main() {
       verify(() => mockRepo.pause()).called(1);
     });
 
-    test('meneruskan exception dari repository', () async {
+    test('truyền tiếp exception từ repository', () async {
       when(() => mockRepo.pause()).thenThrow(Exception('pause failed'));
 
       expect(() => usecase(), throwsException);
@@ -192,42 +192,42 @@ void main() {
           settingsRepository: mockSettingsRepository,
         );
 
-    test('state awal adalah TtsInitial', () {
+    test('state ban đầu là TtsInitial', () {
       final bloc = buildBloc();
       expect(bloc.state, const TtsInitial());
       bloc.close();
     });
 
     blocTest<TtsBloc, TtsState>(
-      'TtsSpeak (queued) → calls speakWarning and emits TtsSpeaking',
+      'TtsSpeak hàng đợi → gọi speakWarning và phát ra TtsSpeaking',
       // speakWarning returns Future<bool>; returning true means TTS accepted the call.
       setUp: () => when(() => mockRepo.speakWarning(any()))
           .thenAnswer((_) async => true),
       build: buildBloc,
-      act: (bloc) => bloc.add(const TtsSpeak('Pedestrian detected ahead')),
-      expect: () => [const TtsSpeaking('Pedestrian detected ahead')],
+      act: (bloc) => bloc.add(const TtsSpeak('Cảnh báo! Người đi bộ ở phía trước.')),
+      expect: () => [const TtsSpeaking('Cảnh báo! Người đi bộ ở phía trước.')],
       verify: (_) => verify(() => mockRepo.speakWarning(
-            'Pedestrian detected ahead',
+            'Cảnh báo! Người đi bộ ở phía trước.',
           )).called(1),
     );
 
     blocTest<TtsBloc, TtsState>(
-      'TtsSpeak(immediate:true) → calls speakImmediate and emits TtsSpeaking',
+      'TtsSpeak(immediate:true) → gọi speakImmediate và phát ra TtsSpeaking',
       // speakImmediate returns Future<bool>; returning true means TTS accepted.
       setUp: () => when(() => mockRepo.speakImmediate(any()))
           .thenAnswer((_) async => true),
       build: buildBloc,
       act: (bloc) => bloc.add(
-          const TtsSpeak('Warning! Very close', immediate: true, withVibration: false)),
-      expect: () => [const TtsSpeaking('Warning! Very close')],
+          const TtsSpeak('Cảnh báo! Vật thể rất gần.', immediate: true, withVibration: false)),
+      expect: () => [const TtsSpeaking('Cảnh báo! Vật thể rất gần.')],
       verify: (_) {
-        verify(() => mockRepo.speakImmediate('Warning! Very close')).called(1);
+        verify(() => mockRepo.speakImmediate('Cảnh báo! Vật thể rất gần.')).called(1);
         verifyNever(() => mockRepo.speakWarning(any()));
       },
     );
 
     blocTest<TtsBloc, TtsState>(
-      'TtsStop → memanggil repository.stop() dan emit TtsStopped',
+      'TtsStop → gọi repository.stop() và phát ra TtsStopped',
       setUp: () => when(() => mockRepo.stop()).thenAnswer((_) async {}),
       build: buildBloc,
       act: (bloc) => bloc.add(const TtsStop()),
@@ -236,7 +236,7 @@ void main() {
     );
 
     blocTest<TtsBloc, TtsState>(
-      'TtsPause → memanggil repository.pause() dan emit TtsPaused',
+      'TtsPause → gọi repository.pause() và phát ra TtsPaused',
       setUp: () => when(() => mockRepo.pause()).thenAnswer((_) async {}),
       build: buildBloc,
       act: (bloc) => bloc.add(const TtsPause()),
@@ -249,7 +249,7 @@ void main() {
     );
 
     blocTest<TtsBloc, TtsState>(
-      'TtsSpeak emit TtsError saat speakWarning throw',
+      'TtsSpeak phát ra TtsError khi speakWarning ném lỗi',
       setUp: () => when(() => mockRepo.speakWarning(any()))
           .thenThrow(Exception('engine crashed')),
       build: buildBloc,
@@ -258,7 +258,7 @@ void main() {
     );
 
     blocTest<TtsBloc, TtsState>(
-      'tidak memanggil speak saat voice dinonaktifkan di pengaturan',
+      'không phát giọng nói khi tính năng voice bị tắt trong cài đặt',
       setUp: () => when(() => mockSettingsRepository.getVoiceEnabled())
           .thenAnswer((_) async => false),
       build: buildBloc,
@@ -271,7 +271,7 @@ void main() {
     );
 
     blocTest<TtsBloc, TtsState>(
-      'TtsError berisi pesan error dari exception',
+      'TtsError chứa thông điệp lỗi lấy từ exception',
       setUp: () => when(() => mockRepo.speakWarning(any()))
           .thenThrow(Exception('engine crashed')),
       build: buildBloc,
@@ -279,82 +279,82 @@ void main() {
       expect: () => [
         predicate<TtsState>(
           (s) => s is TtsError && s.message.contains('engine crashed'),
-          'TtsError dengan pesan engine crashed',
+          'TtsError có chứa engine crashed',
         ),
       ],
     );
 
     blocTest<TtsBloc, TtsState>(
-      'speak then stop sequence emits [TtsSpeaking, TtsStopped]',
+      'chuỗi speak rồi stop phát ra [TtsSpeaking, TtsStopped]',
       setUp: () {
         when(() => mockRepo.speakWarning(any())).thenAnswer((_) async => true);
         when(() => mockRepo.stop()).thenAnswer((_) async {});
       },
       build: buildBloc,
       act: (bloc) async {
-        bloc.add(const TtsSpeak('hello'));
+        bloc.add(const TtsSpeak('xin chào'));
         await Future.delayed(const Duration(milliseconds: 10));
         bloc.add(const TtsStop());
       },
-      expect: () => [const TtsSpeaking('hello'), const TtsStopped()],
+      expect: () => [const TtsSpeaking('xin chào'), const TtsStopped()],
     );
   });
 
   // ─── TtsEvent equality ────────────────────────────────────────────────────
 
-  group('TtsEvent equality', () {
-    test('TtsSpeak dengan params yang sama adalah equal', () {
-      const a = TtsSpeak('hello', immediate: true, withVibration: true);
-      const b = TtsSpeak('hello', immediate: true, withVibration: true);
+  group('So sánh TtsEvent', () {
+    test('TtsSpeak với cùng tham số thì bằng nhau', () {
+      const a = TtsSpeak('xin chào', immediate: true, withVibration: true);
+      const b = TtsSpeak('xin chào', immediate: true, withVibration: true);
       expect(a, equals(b));
     });
 
-    test('TtsSpeak dengan text berbeda tidak equal', () {
-      const a = TtsSpeak('hello');
-      const b = TtsSpeak('world');
+    test('TtsSpeak với nội dung khác nhau thì không bằng nhau', () {
+      const a = TtsSpeak('xin chào');
+      const b = TtsSpeak('tạm biệt');
       expect(a, isNot(equals(b)));
     });
 
-    test('TtsSpeak dengan flag immediate berbeda tidak equal', () {
-      const a = TtsSpeak('hello', immediate: true);
-      const b = TtsSpeak('hello', immediate: false);
+    test('TtsSpeak với cờ immediate khác nhau thì không bằng nhau', () {
+      const a = TtsSpeak('xin chào', immediate: true);
+      const b = TtsSpeak('xin chào', immediate: false);
       expect(a, isNot(equals(b)));
     });
 
-    test('TtsStop equal dengan TtsStop lainnya', () {
+    test('TtsStop bằng với một TtsStop khác', () {
       expect(const TtsStop(), equals(const TtsStop()));
     });
 
-    test('TtsPause equal dengan TtsPause lainnya', () {
+    test('TtsPause bằng với một TtsPause khác', () {
       expect(const TtsPause(), equals(const TtsPause()));
     });
   });
 
   // ─── TtsState equality ────────────────────────────────────────────────────
 
-  group('TtsState equality', () {
-    test('TtsInitial equal', () =>
+  group('So sánh TtsState', () {
+    test('TtsInitial bằng nhau', () =>
         expect(const TtsInitial(), equals(const TtsInitial())));
 
-    test('TtsSpeaking dengan text sama equal', () {
+    test('TtsSpeaking với cùng nội dung thì bằng nhau', () {
       expect(const TtsSpeaking('text'), equals(const TtsSpeaking('text')));
     });
 
-    test('TtsSpeaking dengan text berbeda tidak equal', () {
-      expect(const TtsSpeaking('hello'), isNot(equals(const TtsSpeaking('world'))));
+    test('TtsSpeaking với nội dung khác nhau thì không bằng nhau', () {
+      expect(const TtsSpeaking('xin chào'), isNot(equals(const TtsSpeaking('tạm biệt'))));
     });
 
-    test('TtsStopped equal', () =>
+    test('TtsStopped bằng nhau', () =>
         expect(const TtsStopped(), equals(const TtsStopped())));
 
-    test('TtsPaused equal', () =>
+    test('TtsPaused bằng nhau', () =>
         expect(const TtsPaused(), equals(const TtsPaused())));
 
-    test('TtsError dengan pesan sama equal', () {
+    test('TtsError với cùng thông điệp thì bằng nhau', () {
       expect(const TtsError('oops'), equals(const TtsError('oops')));
     });
 
-    test('TtsError dengan pesan berbeda tidak equal', () {
+    test('TtsError với thông điệp khác nhau thì không bằng nhau', () {
       expect(const TtsError('err1'), isNot(equals(const TtsError('err2'))));
     });
   });

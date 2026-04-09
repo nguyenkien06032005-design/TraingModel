@@ -39,7 +39,7 @@ class BoundingBox extends Equatable {
   String get proximityLabel {
     if (area > 0.25) return 'rất gần';
     if (area > 0.10) return 'gần';
-    if (area > 0.03) return 'trung bình';
+    if (area > 0.03) return 'khoảng cách trung bình';
     return 'xa';
   }
 

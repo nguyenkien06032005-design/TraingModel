@@ -77,7 +77,7 @@ void main() {
             ({required text, required immediate, required withVibration}) {},
       );
 
-  test('initial state is DetectionInitial', () {
+  test('state ban đầu là DetectionInitial', () {
     final bloc = buildBloc();
     expect(bloc.state, const DetectionInitial());
     bloc.close();
@@ -85,7 +85,7 @@ void main() {
 
   group('DetectionStarted', () {
     blocTest<DetectionBloc, DetectionState>(
-      'emits [Loading, ModelReady]',
+      'phát ra [Loading, ModelReady]',
       build: buildBloc,
       act: (bloc) => bloc.add(const DetectionStarted()),
       expect: () => [
@@ -95,7 +95,7 @@ void main() {
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'emits Failure when load fails',
+      'phát ra Failure khi loadModel thất bại',
       build: () {
         when(() => mockLoadModel.call(any())).thenThrow(Exception('load error'));
         return buildBloc();
@@ -109,7 +109,7 @@ void main() {
   });
 
   blocTest<DetectionBloc, DetectionState>(
-    'DetectionStopped → back to Initial and calls closeModel',
+    'DetectionStopped → quay về Initial và gọi closeModel',
     build: buildBloc,
     seed: () => const DetectionModelReady(),
     act: (bloc) => bloc.add(const DetectionStopped()),
@@ -118,7 +118,7 @@ void main() {
   );
 
   blocTest<DetectionBloc, DetectionState>(
-    'empty detections → success with empty list',
+    'không có phát hiện nào → success với danh sách rỗng',
     build: () {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
@@ -136,7 +136,7 @@ void main() {
   );
 
   blocTest<DetectionBloc, DetectionState>(
-    'single detection',
+    'một phát hiện đơn lẻ',
     build: () {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
@@ -149,7 +149,7 @@ void main() {
     expect: () => [isA<DetectionSuccess>()],
   );
 
-  group('Warning callback behavior', () {
+  group('Hành vi callback cảnh báo', () {
     String? capturedText;
     bool?   capturedImmediate;
 
@@ -159,7 +159,7 @@ void main() {
     });
 
     blocTest<DetectionBloc, DetectionState>(
-      'dangerous object → callback immediate=true after 3 stable frames',
+      'vật thể nguy hiểm → callback immediate=true sau 3 frame ổn định',
       // _triggerWarningIfNeeded fires only when isStable (currentCount==3) OR
       // isApproaching. With a single frame there is no previous area to compare
       // and currentCount==1, so the callback is never called.
@@ -187,13 +187,13 @@ void main() {
       expect: () => [isA<DetectionSuccess>(), isA<DetectionSuccess>(), isA<DetectionSuccess>()],
       verify: (_) {
         expect(capturedImmediate, isTrue,
-            reason: 'dangerous object must trigger immediate=true warning');
+            reason: 'Vật thể nguy hiểm phải kích hoạt cảnh báo immediate=true');
         expect(capturedText, isNotEmpty);
       },
     );
 
     blocTest<DetectionBloc, DetectionState>(
-      'safe object → callback immediate=false after 3 stable frames',
+      'vật thể an toàn → callback immediate=false sau 3 frame ổn định',
       // Same debounce reasoning as above — 3 frames required for isStable.
       // A safe object (small area, ≤ dangerousAreaThreshold=0.10) triggers
       // the queued (immediate=false) path, not the danger path.
@@ -221,7 +221,7 @@ void main() {
       verify: (_) {
         expect(capturedImmediate, isNotNull);
         expect(capturedImmediate, isFalse,
-            reason: 'safe (non-dangerous) object must trigger immediate=false warning');
+            reason: 'Vật thể an toàn phải kích hoạt cảnh báo immediate=false');
       },
     );
   });
@@ -240,7 +240,7 @@ void main() {
     // We use a plain test() + StreamSubscription rather than blocTest because
     // blocTest closes its listener when the act Future resolves, which races
     // with async event processing in the BLoC.
-    'processes two concurrent frames independently (frame lock is CameraService responsibility)',
+    'xử lý độc lập hai frame liên tiếp (khóa frame thuộc trách nhiệm CameraService)',
     () async {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
@@ -272,7 +272,7 @@ void main() {
   );
 
   blocTest<DetectionBloc, DetectionState>(
-    'handles exception silently — no state emitted, onDone called',
+    'xử lý exception âm thầm — không phát state và vẫn gọi onDone',
     build: () {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
