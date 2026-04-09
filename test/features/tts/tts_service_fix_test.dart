@@ -34,13 +34,12 @@ class TestableTtsService {
 
     // Prune expired entries before checking cooldown.
     if (_lastSpoken.length > maxLastSpoken) {
-      _lastSpoken.removeWhere((_, time) =>
-          now.difference(time).inMilliseconds > ttsCooldownMs * 2);
+      _lastSpoken.removeWhere(
+          (_, time) => now.difference(time).inMilliseconds > ttsCooldownMs * 2);
     }
 
     final last = _lastSpoken[text];
-    if (last != null &&
-        now.difference(last).inMilliseconds < ttsCooldownMs) {
+    if (last != null && now.difference(last).inMilliseconds < ttsCooldownMs) {
       return null;
     }
 
@@ -54,10 +53,10 @@ class TestableTtsService {
     if (!_queue.contains(text)) _queue.add(text);
   }
 
-  List<String> get queue      => List.unmodifiable(_queue);
+  List<String> get queue => List.unmodifiable(_queue);
   Map<String, DateTime> get lastSpoken => Map.unmodifiable(_lastSpoken);
-  bool get isSpeaking         => _isSpeaking;
-  int  get queueLength        => _queue.length;
+  bool get isSpeaking => _isSpeaking;
+  int get queueLength => _queue.length;
 }
 
 void main() {
@@ -112,14 +111,14 @@ void main() {
   // Cooldown logic
 
   group('speakWarning - cooldown per content', () {
-    test('identical content within cooldown window returns null',
-        () async {
+    test('identical content within cooldown window returns null', () async {
       const text = 'xe máy';
       final result1 = await service.speakWarning(text);
       final result2 = await service.speakWarning(text);
 
       expect(result1, equals(text), reason: 'First call must be accepted');
-      expect(result2, isNull, reason: 'Second call within cooldown must be blocked');
+      expect(result2, isNull,
+          reason: 'Second call within cooldown must be blocked');
     });
 
     test('different contents do not block each other\'s cooldown', () async {
@@ -133,7 +132,8 @@ void main() {
       expect(service.queueLength, equals(3));
     });
 
-    test('_lastSpoken does not grow unboundedly and is pruned when exceeding 100 items',
+    test(
+        '_lastSpoken does not grow unboundedly and is pruned when exceeding 100 items',
         () async {
       for (int i = 0; i < 101; i++) {
         await service.speakWarning('văn_bản_$i');

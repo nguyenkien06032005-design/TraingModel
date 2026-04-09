@@ -12,9 +12,12 @@ import 'package:safe_vision_app/features/detection/presentation/bloc/detection_b
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_event.dart';
 import 'package:safe_vision_app/features/detection/presentation/bloc/detection_state.dart';
 
-class MockLoadModelUsecase  extends Mock implements LoadModelUsecase {}
-class MockDetectFromFrame   extends Mock implements DetectionObjectFromFrame {}
-class MockCameraImage       extends Mock implements CameraImage {}
+class MockLoadModelUsecase extends Mock implements LoadModelUsecase {}
+
+class MockDetectFromFrame extends Mock implements DetectionObjectFromFrame {}
+
+class MockCameraImage extends Mock implements CameraImage {}
+
 class MockCloseModelUsecase extends Mock implements CloseModelUsecase {}
 
 DetectionObject _safeObject({
@@ -25,7 +28,10 @@ DetectionObject _safeObject({
       label: label,
       confidence: confidence,
       boundingBox: const BoundingBox(
-        left: 0.4, top: 0.4, width: 0.05, height: 0.05,
+        left: 0.4,
+        top: 0.4,
+        width: 0.05,
+        height: 0.05,
       ),
     );
 
@@ -37,15 +43,18 @@ DetectionObject _dangerousObject({
       label: label,
       confidence: confidence,
       boundingBox: const BoundingBox(
-        left: 0.1, top: 0.1, width: 0.4, height: 0.4,
+        left: 0.1,
+        top: 0.1,
+        width: 0.4,
+        height: 0.4,
       ),
     );
 
 void main() {
-  late MockLoadModelUsecase  mockLoadModel;
-  late MockDetectFromFrame   mockDetectFromFrame;
+  late MockLoadModelUsecase mockLoadModel;
+  late MockDetectFromFrame mockDetectFromFrame;
   late MockCloseModelUsecase mockCloseModel;
-  late MockCameraImage       mockCameraImage;
+  late MockCameraImage mockCameraImage;
 
   setUpAll(() {
     // CameraImage is used with any() in detectFromFrame stubs.
@@ -56,10 +65,10 @@ void main() {
   });
 
   setUp(() {
-    mockLoadModel       = MockLoadModelUsecase();
+    mockLoadModel = MockLoadModelUsecase();
     mockDetectFromFrame = MockDetectFromFrame();
-    mockCameraImage     = MockCameraImage();
-    mockCloseModel      = MockCloseModelUsecase();
+    mockCameraImage = MockCameraImage();
+    mockCloseModel = MockCloseModelUsecase();
 
     // Default stubs — without these, DetectionStarted/Stopped would throw MissingStubError.
     // LoadModelUsecase implements UseCase<void, NoParams>, so the only callable
@@ -70,10 +79,10 @@ void main() {
 
   DetectionBloc buildBloc({DetectionWarningCallback? onWarning}) =>
       DetectionBloc(
-        loadModel:       mockLoadModel,
+        loadModel: mockLoadModel,
         detectFromFrame: mockDetectFromFrame,
-        closeModel:      mockCloseModel,
-        onWarning:       onWarning ??
+        closeModel: mockCloseModel,
+        onWarning: onWarning ??
             ({required text, required immediate, required withVibration}) {},
       );
 
@@ -97,7 +106,8 @@ void main() {
     blocTest<DetectionBloc, DetectionState>(
       'phát ra Failure khi loadModel thất bại',
       build: () {
-        when(() => mockLoadModel.call(any())).thenThrow(Exception('load error'));
+        when(() => mockLoadModel.call(any()))
+            .thenThrow(Exception('load error'));
         return buildBloc();
       },
       act: (bloc) => bloc.add(const DetectionStarted()),
@@ -126,8 +136,7 @@ void main() {
       return buildBloc();
     },
     seed: () => const DetectionModelReady(),
-    act: (bloc) =>
-        bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
+    act: (bloc) => bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
     expect: () => [
       predicate<DetectionState>(
         (s) => s is DetectionSuccess && s.detections.isEmpty,
@@ -144,17 +153,16 @@ void main() {
       return buildBloc();
     },
     seed: () => const DetectionModelReady(),
-    act: (bloc) =>
-        bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
+    act: (bloc) => bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {})),
     expect: () => [isA<DetectionSuccess>()],
   );
 
   group('Hành vi callback cảnh báo', () {
     String? capturedText;
-    bool?   capturedImmediate;
+    bool? capturedImmediate;
 
     setUp(() {
-      capturedText      = null;
+      capturedText = null;
       capturedImmediate = null;
     });
 
@@ -169,8 +177,9 @@ void main() {
                 rotationDegrees: any(named: 'rotationDegrees')))
             .thenAnswer((_) async => [_dangerousObject()]);
         return buildBloc(
-          onWarning: ({required text, required immediate, required withVibration}) {
-            capturedText      = text;
+          onWarning: (
+              {required text, required immediate, required withVibration}) {
+            capturedText = text;
             capturedImmediate = immediate;
           },
         );
@@ -184,7 +193,11 @@ void main() {
         bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {}));
         await Future.delayed(const Duration(milliseconds: 10));
       },
-      expect: () => [isA<DetectionSuccess>(), isA<DetectionSuccess>(), isA<DetectionSuccess>()],
+      expect: () => [
+        isA<DetectionSuccess>(),
+        isA<DetectionSuccess>(),
+        isA<DetectionSuccess>()
+      ],
       verify: (_) {
         expect(capturedImmediate, isTrue,
             reason: 'Vật thể nguy hiểm phải kích hoạt cảnh báo immediate=true');
@@ -202,8 +215,9 @@ void main() {
                 rotationDegrees: any(named: 'rotationDegrees')))
             .thenAnswer((_) async => [_safeObject()]);
         return buildBloc(
-          onWarning: ({required text, required immediate, required withVibration}) {
-            capturedText      = text;
+          onWarning: (
+              {required text, required immediate, required withVibration}) {
+            capturedText = text;
             capturedImmediate = immediate;
           },
         );
@@ -217,7 +231,11 @@ void main() {
         bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {}));
         await Future.delayed(const Duration(milliseconds: 10));
       },
-      expect: () => [isA<DetectionSuccess>(), isA<DetectionSuccess>(), isA<DetectionSuccess>()],
+      expect: () => [
+        isA<DetectionSuccess>(),
+        isA<DetectionSuccess>(),
+        isA<DetectionSuccess>()
+      ],
       verify: (_) {
         expect(capturedImmediate, isNotNull);
         expect(capturedImmediate, isFalse,

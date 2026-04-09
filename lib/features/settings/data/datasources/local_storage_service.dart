@@ -2,11 +2,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/app_constants.dart';
 
 class LocalStorageService {
-  static const _keySpeechRate      = 'speech_rate';
-  static const _keyConfThreshold   = 'confidence_threshold';
-  static const _keyVoiceEnabled    = 'voice_enabled';
-  static const _keyShowConfPanel   = 'show_confidence_panel';
-  static const _keyTtsLanguage     = 'tts_language';
+  static const _keySpeechRate = 'speech_rate';
+  static const _keyConfThreshold = 'confidence_threshold';
+  static const _keyVoiceEnabled = 'voice_enabled';
+  static const _keyShowConfPanel = 'show_confidence_panel';
+  static const _keyTtsLanguage = 'tts_language';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -22,8 +22,7 @@ class LocalStorageService {
 
   Future<double> getConfidenceThreshold() async {
     final p = await _prefs;
-    return p.getDouble(_keyConfThreshold) ??
-        AppConstants.confidenceThreshold;
+    return p.getDouble(_keyConfThreshold) ?? AppConstants.confidenceThreshold;
   }
 
   Future<void> setConfidenceThreshold(double v) async {

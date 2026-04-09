@@ -50,7 +50,7 @@ class VoiceHelper {
     return trimmed.replaceAll('_', ' ');
   }
 
-  static String modelLoaded()   => 'Hệ thống sẵn sàng';
+  static String modelLoaded() => 'Hệ thống sẵn sàng';
   static String noObjectFound() => 'Không phát hiện vật thể';
-  static String systemError()   => 'Lỗi hệ thống, vui lòng thử lại';
+  static String systemError() => 'Lỗi hệ thống, vui lòng thử lại';
 }

@@ -13,7 +13,6 @@ class BoundingBoxModel {
     required this.height,
   });
 
-  
   factory BoundingBoxModel.fromMap(Map<String, dynamic> map) {
     return BoundingBoxModel(
       left: (map['left'] as num).toDouble(),
@@ -23,7 +22,6 @@ class BoundingBoxModel {
     );
   }
 
-  
   factory BoundingBoxModel.fromTFLiteList(List<dynamic> list) {
     final top = (list[0] as num).toDouble();
     final left = (list[1] as num).toDouble();

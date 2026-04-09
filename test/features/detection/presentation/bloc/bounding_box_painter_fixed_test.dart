@@ -14,16 +14,27 @@ void main() {
   // dispose() and TextPainter memory management
 
   group('BoundingBoxPainter.dispose() xóa bộ nhớ đệm TextPainter', () {
-    testWidgets('dispose() runs without crash and correctly clears labels', (tester) async {
+    testWidgets('dispose() runs without crash and correctly clears labels',
+        (tester) async {
       final painter = BoundingBoxPainter(
         boxes: [
           const SmoothedBox(
-            left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-            label: 'person', trackId: 1, missedFrames: 0,
+            left: 0.1,
+            top: 0.1,
+            width: 0.3,
+            height: 0.4,
+            label: 'person',
+            trackId: 1,
+            missedFrames: 0,
           ),
           const SmoothedBox(
-            left: 0.5, top: 0.2, width: 0.2, height: 0.3,
-            label: 'bicycle', trackId: 2, missedFrames: 0,
+            left: 0.5,
+            top: 0.2,
+            width: 0.2,
+            height: 0.3,
+            label: 'bicycle',
+            trackId: 2,
+            missedFrames: 0,
           ),
         ],
         version: 1,
@@ -44,12 +55,18 @@ void main() {
           reason: 'dispose() phải xóa TextPainter cache mà không crash');
     });
 
-    testWidgets('dispose() with multiple labels does not leak memory', (tester) async {
+    testWidgets('dispose() with multiple labels does not leak memory',
+        (tester) async {
       final boxes = List.generate(
         10,
         (i) => SmoothedBox(
-          left: i * 0.05, top: 0.1, width: 0.04, height: 0.04,
-          label: 'label_$i', trackId: i, missedFrames: 0,
+          left: i * 0.05,
+          top: 0.1,
+          width: 0.04,
+          height: 0.04,
+          label: 'label_$i',
+          trackId: i,
+          missedFrames: 0,
         ),
       );
 
@@ -70,53 +87,78 @@ void main() {
   // Paint objects do not share state between painters
 
   group('Paint theo từng instance — không dùng chung mutable state', () {
-    testWidgets('subsequent frame with different label does not affect color', (tester) async {
+    testWidgets('subsequent frame with different label does not affect color',
+        (tester) async {
       final boxes1 = [
         const SmoothedBox(
-          left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-          label: 'person', trackId: 1, missedFrames: 0,
+          left: 0.1,
+          top: 0.1,
+          width: 0.3,
+          height: 0.4,
+          label: 'person',
+          trackId: 1,
+          missedFrames: 0,
         ),
       ];
       final boxes2 = [
         const SmoothedBox(
-          left: 0.5, top: 0.5, width: 0.2, height: 0.2,
-          label: 'bicycle', trackId: 2, missedFrames: 0,
+          left: 0.5,
+          top: 0.5,
+          width: 0.2,
+          height: 0.2,
+          label: 'bicycle',
+          trackId: 2,
+          missedFrames: 0,
         ),
       ];
 
       final painter1 = BoundingBoxPainter(boxes: boxes1, version: 1);
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter1)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter1)))),
       );
       expect(tester.takeException(), isNull,
           reason: 'Khung hình 1 không được ném lỗi');
 
       final painter2 = BoundingBoxPainter(boxes: boxes2, version: 2);
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter2)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter2)))),
       );
       expect(tester.takeException(), isNull,
           reason: 'Frame 2 is not affected by Paint state of frame 1');
     });
 
-    testWidgets('missedFrames opacity áp dụng độc lập cho từng box', (tester) async {
+    testWidgets('missedFrames opacity áp dụng độc lập cho từng box',
+        (tester) async {
       final boxes = [
         const SmoothedBox(
-          left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-          label: 'car', trackId: 1, missedFrames: 0,
+          left: 0.1,
+          top: 0.1,
+          width: 0.3,
+          height: 0.4,
+          label: 'car',
+          trackId: 1,
+          missedFrames: 0,
         ),
         const SmoothedBox(
-          left: 0.5, top: 0.5, width: 0.2, height: 0.2,
-          label: 'truck', trackId: 2, missedFrames: 2,
+          left: 0.5,
+          top: 0.5,
+          width: 0.2,
+          height: 0.2,
+          label: 'truck',
+          trackId: 2,
+          missedFrames: 2,
         ),
       ];
 
       final painter = BoundingBoxPainter(boxes: boxes, version: 1);
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter)))),
       );
       expect(tester.takeException(), isNull);
     });
@@ -128,8 +170,13 @@ void main() {
     test('same version -> does not repaint', () {
       final boxes = [
         const SmoothedBox(
-          left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-          label: 'person', trackId: 1, missedFrames: 0,
+          left: 0.1,
+          top: 0.1,
+          width: 0.3,
+          height: 0.4,
+          label: 'person',
+          trackId: 1,
+          missedFrames: 0,
         ),
       ];
       final painter1 = BoundingBoxPainter(boxes: boxes, version: 5);
@@ -142,8 +189,13 @@ void main() {
     test('version khác → vẽ lại', () {
       const boxes = [
         SmoothedBox(
-          left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-          label: 'person', trackId: 1, missedFrames: 0,
+          left: 0.1,
+          top: 0.1,
+          width: 0.3,
+          height: 0.4,
+          label: 'person',
+          trackId: 1,
+          missedFrames: 0,
         ),
       ];
       final painter1 = BoundingBoxPainter(boxes: boxes, version: 5);
@@ -219,8 +271,9 @@ void main() {
     testWidgets('paints without error on empty list', (tester) async {
       final painter = BoundingBoxPainter(boxes: const [], version: 0);
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter)))),
       );
       expect(tester.takeException(), isNull);
     });
@@ -229,36 +282,50 @@ void main() {
       final painter = BoundingBoxPainter(
         boxes: const [
           SmoothedBox(
-            left: 0.3, top: 0.3, width: 0.4, height: 0.4,
-            label: 'car', trackId: 1, missedFrames: 0,
+            left: 0.3,
+            top: 0.3,
+            width: 0.4,
+            height: 0.4,
+            label: 'car',
+            trackId: 1,
+            missedFrames: 0,
           )
         ],
         mirrorHorizontal: true,
         version: 1,
       );
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter)))),
       );
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('out of bounds box is clamped without crashing', (tester) async {
+    testWidgets('out of bounds box is clamped without crashing',
+        (tester) async {
       final painter = BoundingBoxPainter(
         boxes: const [
           SmoothedBox(
-            left: -0.1, top: -0.1, width: 1.5, height: 1.5,
-            label: 'overflow', trackId: 1, missedFrames: 0,
+            left: -0.1,
+            top: -0.1,
+            width: 1.5,
+            height: 1.5,
+            label: 'overflow',
+            trackId: 1,
+            missedFrames: 0,
           ),
         ],
         version: 1,
       );
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: SizedBox.expand(
-          child: CustomPaint(painter: painter)))),
+        MaterialApp(
+            home: Scaffold(
+                body: SizedBox.expand(child: CustomPaint(painter: painter)))),
       );
       expect(tester.takeException(), isNull,
-          reason: 'Các box vượt biên phải được chặn trong phạm vi và không được crash');
+          reason:
+              'Các box vượt biên phải được chặn trong phạm vi và không được crash');
     });
   });
 }

@@ -18,20 +18,20 @@ import 'tts_state.dart';
 /// Vibration ([Vibration.vibrate]) is triggered only if TTS is actually
 /// accepted after the cooldown check, not on every incoming event.
 class TtsBloc extends Bloc<TtsEvent, TtsState> {
-  final SpeakWarningUsecase  _speakWarning;
-  final StopSpeakingUsecase  _stopSpeaking;
+  final SpeakWarningUsecase _speakWarning;
+  final StopSpeakingUsecase _stopSpeaking;
   final PauseSpeakingUsecase _pauseSpeaking;
-  final SettingsRepository   _settingsRepository;
+  final SettingsRepository _settingsRepository;
 
   TtsBloc({
-    required SpeakWarningUsecase  speakWarning,
-    required StopSpeakingUsecase  stopSpeaking,
+    required SpeakWarningUsecase speakWarning,
+    required StopSpeakingUsecase stopSpeaking,
     required PauseSpeakingUsecase pauseSpeaking,
-    required SettingsRepository   settingsRepository,
-  })  : _speakWarning        = speakWarning,
-        _stopSpeaking        = stopSpeaking,
-        _pauseSpeaking       = pauseSpeaking,
-        _settingsRepository  = settingsRepository,
+    required SettingsRepository settingsRepository,
+  })  : _speakWarning = speakWarning,
+        _stopSpeaking = stopSpeaking,
+        _pauseSpeaking = pauseSpeaking,
+        _settingsRepository = settingsRepository,
         super(const TtsInitial()) {
     on<TtsSpeak>(_onSpeak);
     on<TtsStop>(_onStop);

@@ -33,8 +33,8 @@ typedef DetectionWarningCallback = void Function({
 /// - The bounding-box area grows by more than 30% compared to the previous
 ///   frame, which signals an approaching object.
 class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
-  final LoadModelUsecase         _loadModel;
-  final CloseModelUsecase        _closeModel;
+  final LoadModelUsecase _loadModel;
+  final CloseModelUsecase _closeModel;
   final DetectionObjectFromFrame _detectFromFrame;
   final DetectionWarningCallback _onWarning;
 
@@ -47,14 +47,14 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   Map<String, int> _consecutiveFrames = {};
 
   DetectionBloc({
-    required LoadModelUsecase         loadModel,
-    required CloseModelUsecase        closeModel,
+    required LoadModelUsecase loadModel,
+    required CloseModelUsecase closeModel,
     required DetectionObjectFromFrame detectFromFrame,
     required DetectionWarningCallback onWarning,
-  })  : _loadModel       = loadModel,
-        _closeModel      = closeModel,
+  })  : _loadModel = loadModel,
+        _closeModel = closeModel,
         _detectFromFrame = detectFromFrame,
-        _onWarning       = onWarning,
+        _onWarning = onWarning,
         super(const DetectionInitial()) {
     on<DetectionStarted>(_onStarted);
     on<DetectionStopped>(_onStopped);
@@ -65,7 +65,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     DetectionStarted event,
     Emitter<DetectionState> emit,
   ) async {
-    _previousObjects   = {};
+    _previousObjects = {};
     _consecutiveFrames = {};
     if (kDebugMode) debugPrint('[DetectionBloc] loading model...');
     emit(const DetectionLoading());
@@ -136,40 +136,43 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   /// objects are queued through TTS.
   void _triggerWarningIfNeeded(List<DetectionObject> detections) {
     final currentObjects = _groupAreasByLabel(detections);
-    final sortedDetections = [...detections]
-      ..sort((a, b) {
+    final sortedDetections = [...detections]..sort((a, b) {
         final labelCompare = a.label.compareTo(b.label);
         if (labelCompare != 0) return labelCompare;
         return b.boundingBox.area.compareTo(a.boundingBox.area);
       });
 
-    final candidates    = <DetectionObject>[];
+    final candidates = <DetectionObject>[];
     final currentIndices = <String, int>{};
     final newConsecutive = <String, int>{};
 
     for (final d in sortedDetections) {
       final currentIndex = currentIndices.update(
-        d.label, (value) => value + 1, ifAbsent: () => 0,
+        d.label,
+        (value) => value + 1,
+        ifAbsent: () => 0,
       );
 
-      final presenceKey   = '${d.label}_$currentIndex';
-      final prevCount     = _consecutiveFrames[presenceKey] ?? 0;
-      final currentCount  = prevCount + 1;
+      final presenceKey = '${d.label}_$currentIndex';
+      final prevCount = _consecutiveFrames[presenceKey] ?? 0;
+      final currentCount = prevCount + 1;
       newConsecutive[presenceKey] = currentCount;
 
       final previousAreas = _previousObjects[d.label];
-      final oldArea = previousAreas != null && currentIndex < previousAreas.length
-          ? previousAreas[currentIndex]
-          : null;
+      final oldArea =
+          previousAreas != null && currentIndex < previousAreas.length
+              ? previousAreas[currentIndex]
+              : null;
 
-      final isApproaching = oldArea != null && d.boundingBox.area > oldArea * 1.3;
-      final isStable      = currentCount == 3;
-      final isFirstSeen   = currentCount == 1;
+      final isApproaching =
+          oldArea != null && d.boundingBox.area > oldArea * 1.3;
+      final isStable = currentCount == 3;
+      final isFirstSeen = currentCount == 1;
 
       if (isApproaching || isStable || isFirstSeen) candidates.add(d);
     }
 
-    _previousObjects   = currentObjects;
+    _previousObjects = currentObjects;
     _consecutiveFrames = newConsecutive;
 
     if (candidates.isEmpty) return;
@@ -179,8 +182,8 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
     if (dangerous.isNotEmpty) {
       _onWarning(
-        text:          dangerous.first.voiceWarning,
-        immediate:     true,
+        text: dangerous.first.voiceWarning,
+        immediate: true,
         withVibration: true,
       );
     } else {
@@ -188,8 +191,8 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         (a, b) => a.confidence > b.confidence ? a : b,
       );
       _onWarning(
-        text:          top.voiceWarning,
-        immediate:     false,
+        text: top.voiceWarning,
+        immediate: false,
         withVibration: false,
       );
     }
@@ -203,7 +206,8 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   ) {
     final grouped = <String, List<double>>{};
     for (final detection in detections) {
-      grouped.putIfAbsent(detection.label, () => <double>[])
+      grouped
+          .putIfAbsent(detection.label, () => <double>[])
           .add(detection.boundingBox.area);
     }
     for (final areas in grouped.values) {

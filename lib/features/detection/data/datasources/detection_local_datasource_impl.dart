@@ -25,12 +25,12 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
   final DetectionConfig _config;
 
-  List<String> _labels      = [];
-  List<int>    _outputShape = [];
+  List<String> _labels = [];
+  List<int> _outputShape = [];
   bool _modelLoaded = false;
 
-  Isolate?     _isolate;
-  SendPort?    _isolateSendPort;
+  Isolate? _isolate;
+  SendPort? _isolateSendPort;
   ReceivePort? _mainReceivePort;
   int _consecutiveTimeouts = 0;
 
@@ -48,13 +48,14 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
           .where((l) => l.isNotEmpty)
           .toList();
 
-      final modelData  = await rootBundle.load(AssetPaths.modelFile);
+      final modelData = await rootBundle.load(AssetPaths.modelFile);
       final modelBytes = modelData.buffer.asUint8List();
 
       await _spawnIsolate(modelBytes);
 
       if (kDebugMode) {
-        debugPrint('[DS] Model OK in isolate — threads=${AppConstants.inferenceThreads}');
+        debugPrint(
+            '[DS] Model OK in isolate — threads=${AppConstants.inferenceThreads}');
         debugPrint('[DS]   output = $_outputShape  labels=${_labels.length}');
       }
 
@@ -75,10 +76,10 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
     final ackPort = ReceivePort();
     _isolateSendPort!.send(_IsolateInitMsg(
-      labels:     List.unmodifiable(_labels),
-      inputSize:  AppConstants.inputSize,
+      labels: List.unmodifiable(_labels),
+      inputSize: AppConstants.inputSize,
       modelBytes: TransferableTypedData.fromList([modelBytes]),
-      ackPort:    ackPort.sendPort,
+      ackPort: ackPort.sendPort,
     ));
 
     final ack = await ackPort.first as _IsolateInitAck;
@@ -108,7 +109,7 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
       _mainReceivePort?.close();
     } catch (_) {}
 
-    _isolate         = null;
+    _isolate = null;
     _mainReceivePort = null;
     _isolateSendPort = null;
 
@@ -133,24 +134,24 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     ReceivePort? replyPort;
     try {
       final planeBytes = <TransferableTypedData>[
-        for (final p in image.planes)
-          TransferableTypedData.fromList([p.bytes]),
+        for (final p in image.planes) TransferableTypedData.fromList([p.bytes]),
       ];
-      final rowStrides   = image.planes.map((p) => p.bytesPerRow).toList();
-      final pixelStrides = image.planes.map((p) => p.bytesPerPixel ?? 1).toList();
+      final rowStrides = image.planes.map((p) => p.bytesPerRow).toList();
+      final pixelStrides =
+          image.planes.map((p) => p.bytesPerPixel ?? 1).toList();
 
       replyPort = ReceivePort();
       _isolateSendPort!.send(_InferenceJob(
-        replyPort:           replyPort.sendPort,
-        planeBytes:          planeBytes,
-        planeRowStrides:     rowStrides,
-        planePixelStrides:   pixelStrides,
-        imageWidth:          image.width,
-        imageHeight:         image.height,
-        rotationDegrees:     rotationDegrees,
+        replyPort: replyPort.sendPort,
+        planeBytes: planeBytes,
+        planeRowStrides: rowStrides,
+        planePixelStrides: pixelStrides,
+        imageWidth: image.width,
+        imageHeight: image.height,
+        rotationDegrees: rotationDegrees,
         confidenceThreshold: _config.confidenceThreshold,
-        iouThreshold:        _config.iouThreshold,
-        maxDetections:       _config.maxDetections,
+        iouThreshold: _config.iouThreshold,
+        maxDetections: _config.maxDetections,
       ));
 
       final dynamic result = await replyPort.first.timeout(
@@ -210,12 +211,12 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
     }
 
     _isolate?.kill(priority: Isolate.immediate);
-    _isolate             = null;
+    _isolate = null;
     _mainReceivePort?.close();
-    _mainReceivePort     = null;
-    _isolateSendPort     = null;
-    _modelLoaded         = false;
-    _isolateBusy         = false;
+    _mainReceivePort = null;
+    _isolateSendPort = null;
+    _modelLoaded = false;
+    _isolateBusy = false;
     _consecutiveTimeouts = 0;
     if (kDebugMode) debugPrint('[DS] model closed, resources freed');
   }
@@ -227,13 +228,13 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
 Interpreter? _cachedInterpreter;
 Float32List? _cachedTensor;
-Uint8List?   _cachedOutputBytes;
+Uint8List? _cachedOutputBytes;
 Float32List? _cachedOutputFloats;
 int _cachedOutputLen = 0;
 
 List<String>? _initLabels;
-int           _initInputSize  = 0;
-List<int>     _initOutputShape = const [];
+int _initInputSize = 0;
+List<int> _initOutputShape = const [];
 
 /// Entry point for the isolate. It listens for jobs from the main isolate
 /// through a [ReceivePort]. Processing order is: init, repeated jobs, shutdown.
@@ -243,12 +244,12 @@ void _isolateEntry(SendPort mainSendPort) {
 
   jobPort.listen((msg) {
     if (msg is _IsolateInitMsg) {
-      _initLabels   = msg.labels;
+      _initLabels = msg.labels;
       _initInputSize = msg.inputSize;
 
       try {
-        final options         = InterpreterOptions();
-        var delegateEnabled   = false;
+        final options = InterpreterOptions();
+        var delegateEnabled = false;
 
         // Try the GPU delegate first for hardware acceleration, then fall back
         // to NNAPI on Android or CPU execution if needed.
@@ -287,7 +288,6 @@ void _isolateEntry(SendPort mainSendPort) {
           _IsolateInitAck(outputShape: const [], error: e.toString()),
         );
       }
-
     } else if (msg is _IsolateShutdown) {
       try {
         _cachedInterpreter?.close();
@@ -298,7 +298,6 @@ void _isolateEntry(SendPort mainSendPort) {
       msg.replyPort.send(const _IsolateInitAck(outputShape: []));
       jobPort.close();
       Isolate.exit();
-
     } else if (msg is _InferenceJob) {
       if (_initLabels == null) {
         msg.replyPort.send('ERROR: not initialized');
@@ -320,30 +319,30 @@ void _processJob(_InferenceJob job) {
     // Letterbox and normalize YUV420 into a Float32 tensor in one pass.
     // Reuse [_cachedTensor] to avoid GC-heavy per-frame allocations.
     final lb = ImageConverter.yuvToLetterboxedFloat32(
-      planes:          planes,
-      rowStrides:      job.planeRowStrides,
-      pixelStrides:    job.planePixelStrides,
-      srcWidth:        job.imageWidth,
-      srcHeight:       job.imageHeight,
-      inputSize:       _initInputSize,
+      planes: planes,
+      rowStrides: job.planeRowStrides,
+      pixelStrides: job.planePixelStrides,
+      srcWidth: job.imageWidth,
+      srcHeight: job.imageHeight,
+      inputSize: _initInputSize,
       rotationDegrees: job.rotationDegrees,
-      reuseBuffer:     _cachedTensor,
+      reuseBuffer: _cachedTensor,
     );
     _cachedTensor = lb.inputTensor;
 
-    final inputTensor = lb.inputTensor
-        .reshape([1, _initInputSize, _initInputSize, 3]);
+    final inputTensor =
+        lb.inputTensor.reshape([1, _initInputSize, _initInputSize, 3]);
 
     _ensureOutputFlat();
     final outputMap = <int, Object>{0: _cachedOutputBytes!};
     interpreter.runForMultipleInputs([inputTensor], outputMap);
 
     final results = _parseFlat(
-      flat:                _cachedOutputFloats!,
-      letterbox:           lb,
+      flat: _cachedOutputFloats!,
+      letterbox: lb,
       confidenceThreshold: job.confidenceThreshold,
-      iouThreshold:        job.iouThreshold,
-      maxDetections:       job.maxDetections,
+      iouThreshold: job.iouThreshold,
+      maxDetections: job.maxDetections,
     );
 
     job.replyPort.send(results);
@@ -363,9 +362,9 @@ void _ensureOutputFlat() {
     throw StateError('[Isolate] Output shape produced needed=$needed');
   }
   if (_cachedOutputBytes == null || _cachedOutputLen != needed) {
-    _cachedOutputBytes  = Uint8List(needed * Float32List.bytesPerElement);
+    _cachedOutputBytes = Uint8List(needed * Float32List.bytesPerElement);
     _cachedOutputFloats = _cachedOutputBytes!.buffer.asFloat32List();
-    _cachedOutputLen    = needed;
+    _cachedOutputLen = needed;
   }
 }
 
@@ -375,22 +374,22 @@ void _ensureOutputFlat() {
 ///
 /// Applies per-class NMS after confidence filtering.
 List<Map<String, dynamic>> _parseFlat({
-  required Float32List    flat,
+  required Float32List flat,
   required LetterboxResult letterbox,
-  required double         confidenceThreshold,
-  required double         iouThreshold,
-  required int            maxDetections,
+  required double confidenceThreshold,
+  required double iouThreshold,
+  required int maxDetections,
 }) {
-  final labels    = _initLabels!;
+  final labels = _initLabels!;
   final inputSize = _initInputSize;
-  final shape     = _initOutputShape;
+  final shape = _initOutputShape;
 
   if (shape.length < 3) return [];
 
-  final int dim0       = shape[1];
-  final int dim1       = shape[2];
+  final int dim0 = shape[1];
+  final int dim1 = shape[2];
   final bool isTransposed = dim0 < dim1;
-  final int numBoxes   = isTransposed ? dim1 : dim0;
+  final int numBoxes = isTransposed ? dim1 : dim0;
   final int numChannels = isTransposed ? dim0 : dim1;
   final int classOffset = AppConstants.yoloHasObjectness ? 5 : 4;
   final int availableClasses =
@@ -412,18 +411,17 @@ List<Map<String, dynamic>> _parseFlat({
     final double bh = valueAt(i, 3);
     if (bw <= 0 || bh <= 0) continue;
 
-    final double objectness = AppConstants.yoloHasObjectness
-        ? _activateScore(valueAt(i, 4))
-        : 1.0;
+    final double objectness =
+        AppConstants.yoloHasObjectness ? _activateScore(valueAt(i, 4)) : 1.0;
     if (objectness < confidenceThreshold) continue;
 
-    int    bestClassId    = -1;
+    int bestClassId = -1;
     double bestClassScore = 0.0;
     for (int c = 0; c < availableClasses; c++) {
       final double score = _activateScore(valueAt(i, classOffset + c));
       if (score > bestClassScore) {
         bestClassScore = score;
-        bestClassId    = c;
+        bestClassId = c;
       }
     }
     if (bestClassId < 0) continue;
@@ -432,19 +430,26 @@ List<Map<String, dynamic>> _parseFlat({
     if (finalScore < confidenceThreshold) continue;
 
     final box = ImageConverter.unLetterboxBox(
-      cx: cx, cy: cy, bw: bw, bh: bh,
-      padLeft:    letterbox.padLeft,
-      padTop:     letterbox.padTop,
-      scale:      letterbox.scale,
-      origWidth:  letterbox.origWidth,
+      cx: cx,
+      cy: cy,
+      bw: bw,
+      bh: bh,
+      padLeft: letterbox.padLeft,
+      padTop: letterbox.padTop,
+      scale: letterbox.scale,
+      origWidth: letterbox.origWidth,
       origHeight: letterbox.origHeight,
-      inputSize:  inputSize,
+      inputSize: inputSize,
     );
     if (box.width <= 0 || box.height <= 0) continue;
 
     rawBoxes.add(_RawBox(
-      left: box.left, top: box.top, width: box.width, height: box.height,
-      score: finalScore, classId: bestClassId,
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: box.height,
+      score: finalScore,
+      classId: bestClassId,
     ));
   }
 
@@ -457,16 +462,15 @@ List<Map<String, dynamic>> _parseFlat({
   final kept = _nms(rawBoxes, iouThreshold);
 
   return kept.take(maxDetections).map((b) {
-    final label = b.classId < labels.length
-        ? labels[b.classId]
-        : 'class_${b.classId}';
+    final label =
+        b.classId < labels.length ? labels[b.classId] : 'class_${b.classId}';
     return <String, dynamic>{
-      'label':      label,
+      'label': label,
       'confidence': b.score,
-      'left':       b.left,
-      'top':        b.top,
-      'width':      b.width,
-      'height':     b.height,
+      'left': b.left,
+      'top': b.top,
+      'width': b.width,
+      'height': b.height,
     };
   }).toList();
 }
@@ -508,29 +512,35 @@ double _iou(_RawBox a, _RawBox b) {
 
 class _RawBox {
   final double left, top, width, height, score;
-  final int    classId;
+  final int classId;
   const _RawBox({
-    required this.left, required this.top, required this.width,
-    required this.height, required this.score, required this.classId,
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.score,
+    required this.classId,
   });
 }
 
 // Cross-isolate message types
 
 class _IsolateInitMsg {
-  final List<String>           labels;
-  final int                    inputSize;
-  final TransferableTypedData  modelBytes;
-  final SendPort               ackPort;
+  final List<String> labels;
+  final int inputSize;
+  final TransferableTypedData modelBytes;
+  final SendPort ackPort;
   const _IsolateInitMsg({
-    required this.labels, required this.inputSize,
-    required this.modelBytes, required this.ackPort,
+    required this.labels,
+    required this.inputSize,
+    required this.modelBytes,
+    required this.ackPort,
   });
 }
 
 class _IsolateInitAck {
   final List<int> outputShape;
-  final String?   error;
+  final String? error;
   const _IsolateInitAck({required this.outputShape, this.error});
 }
 
@@ -540,19 +550,23 @@ class _IsolateShutdown {
 }
 
 class _InferenceJob {
-  final SendPort                   replyPort;
+  final SendPort replyPort;
   final List<TransferableTypedData> planeBytes;
-  final List<int>                  planeRowStrides;
-  final List<int>                  planePixelStrides;
-  final int                        imageWidth, imageHeight, rotationDegrees;
-  final double                     confidenceThreshold, iouThreshold;
-  final int                        maxDetections;
+  final List<int> planeRowStrides;
+  final List<int> planePixelStrides;
+  final int imageWidth, imageHeight, rotationDegrees;
+  final double confidenceThreshold, iouThreshold;
+  final int maxDetections;
   const _InferenceJob({
-    required this.replyPort,      required this.planeBytes,
-    required this.planeRowStrides, required this.planePixelStrides,
-    required this.imageWidth,     required this.imageHeight,
+    required this.replyPort,
+    required this.planeBytes,
+    required this.planeRowStrides,
+    required this.planePixelStrides,
+    required this.imageWidth,
+    required this.imageHeight,
     required this.rotationDegrees,
-    required this.confidenceThreshold, required this.iouThreshold,
+    required this.confidenceThreshold,
+    required this.iouThreshold,
     required this.maxDetections,
   });
 }

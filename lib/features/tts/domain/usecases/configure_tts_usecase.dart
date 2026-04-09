@@ -1,8 +1,4 @@
-
-
 import '../repositories/tts_repository.dart';
-
-
 
 class ConfigureTtsUsecase {
   final TtsRepository _repository;
@@ -13,10 +9,11 @@ class ConfigureTtsUsecase {
     double? speechRate,
     double? pitch,
     double? volume,
-  }) => _repository.configure(
-    language:   language,
-    speechRate: speechRate,
-    pitch:      pitch,
-    volume:     volume,
-  );
+  }) =>
+      _repository.configure(
+        language: language,
+        speechRate: speechRate,
+        pitch: pitch,
+        volume: volume,
+      );
 }

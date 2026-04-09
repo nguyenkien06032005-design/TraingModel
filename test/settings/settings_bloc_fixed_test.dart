@@ -13,21 +13,22 @@ import 'package:safe_vision_app/features/tts/domain/usecases/stop_speaking_useca
 import 'package:safe_vision_app/features/tts/domain/repositories/tts_repository.dart';
 
 class MockSettingsRepository extends Mock implements SettingsRepository {}
-class MockTtsRepository      extends Mock implements TtsRepository {}
+
+class MockTtsRepository extends Mock implements TtsRepository {}
 
 void main() {
   late MockSettingsRepository mockRepo;
-  late ConfigureTtsUsecase    configureTts;
-  late StopSpeakingUsecase    stopSpeaking;
-  late DetectionConfig        detectionConfig;
-  late MockTtsRepository      mockTtsRepo;
+  late ConfigureTtsUsecase configureTts;
+  late StopSpeakingUsecase stopSpeaking;
+  late DetectionConfig detectionConfig;
+  late MockTtsRepository mockTtsRepo;
 
   /// Records configure() calls so the test can verify the parameters.
   final List<Map<String, dynamic>> capturedConfigCalls = [];
 
   setUp(() {
-    mockRepo        = MockSettingsRepository();
-    mockTtsRepo     = MockTtsRepository();
+    mockRepo = MockSettingsRepository();
+    mockTtsRepo = MockTtsRepository();
     detectionConfig = DetectionConfig();
     capturedConfigCalls.clear();
 
@@ -38,31 +39,23 @@ void main() {
         .thenAnswer((_) async => AppConstants.ttsSpeechRate);
     when(() => mockRepo.getConfidenceThreshold())
         .thenAnswer((_) async => AppConstants.confidenceThreshold);
-    when(() => mockRepo.getVoiceEnabled())
-        .thenAnswer((_) async => true);
-    when(() => mockRepo.getShowConfidencePanel())
-        .thenAnswer((_) async => true);
-    when(() => mockRepo.getTtsLanguage())
-        .thenAnswer((_) async => 'vi-VN');
-    when(() => mockRepo.setTtsLanguage(any()))
-        .thenAnswer((_) async {});
-    when(() => mockRepo.setSpeechRate(any()))
-        .thenAnswer((_) async {});
-    when(() => mockRepo.setVoiceEnabled(any()))
-        .thenAnswer((_) async {});
-    when(() => mockRepo.setConfidenceThreshold(any()))
-        .thenAnswer((_) async {});
-    when(() => mockRepo.setShowConfidencePanel(any()))
-        .thenAnswer((_) async {});
+    when(() => mockRepo.getVoiceEnabled()).thenAnswer((_) async => true);
+    when(() => mockRepo.getShowConfidencePanel()).thenAnswer((_) async => true);
+    when(() => mockRepo.getTtsLanguage()).thenAnswer((_) async => 'vi-VN');
+    when(() => mockRepo.setTtsLanguage(any())).thenAnswer((_) async {});
+    when(() => mockRepo.setSpeechRate(any())).thenAnswer((_) async {});
+    when(() => mockRepo.setVoiceEnabled(any())).thenAnswer((_) async {});
+    when(() => mockRepo.setConfidenceThreshold(any())).thenAnswer((_) async {});
+    when(() => mockRepo.setShowConfidencePanel(any())).thenAnswer((_) async {});
 
     when(() => mockTtsRepo.configure(
-      language:   any(named: 'language'),
-      speechRate: any(named: 'speechRate'),
-      pitch:      any(named: 'pitch'),
-      volume:     any(named: 'volume'),
-    )).thenAnswer((invocation) async {
+          language: any(named: 'language'),
+          speechRate: any(named: 'speechRate'),
+          pitch: any(named: 'pitch'),
+          volume: any(named: 'volume'),
+        )).thenAnswer((invocation) async {
       capturedConfigCalls.add({
-        'language':   invocation.namedArguments[const Symbol('language')],
+        'language': invocation.namedArguments[const Symbol('language')],
         'speechRate': invocation.namedArguments[const Symbol('speechRate')],
       });
     });
@@ -89,9 +82,8 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 10));
       },
       verify: (_) {
-        final langChangeCalls = capturedConfigCalls
-            .where((c) => c['language'] == 'vi-VN')
-            .toList();
+        final langChangeCalls =
+            capturedConfigCalls.where((c) => c['language'] == 'vi-VN').toList();
 
         expect(langChangeCalls, isNotEmpty,
             reason: 'TTS phải được cấu hình lại khi xử lý đổi ngôn ngữ');
@@ -136,13 +128,13 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 10));
       },
       verify: (_) {
-        final langCalls = capturedConfigCalls
-            .where((c) => c['language'] == 'vi-VN')
-            .toList();
+        final langCalls =
+            capturedConfigCalls.where((c) => c['language'] == 'vi-VN').toList();
 
         expect(langCalls, isNotEmpty);
         expect(langCalls.last['speechRate'], closeTo(0.8, 0.001),
-            reason: 'Sau khi đặt tốc độ 0.8, lần cấu hình kế tiếp vẫn phải dùng 0.8.');
+            reason:
+                'Sau khi đặt tốc độ 0.8, lần cấu hình kế tiếp vẫn phải dùng 0.8.');
       },
     );
   });
@@ -159,9 +151,8 @@ void main() {
         bloc.add(const SettingsSpeechRateChanged(0.75));
       },
       verify: (_) {
-        final rateCalls = capturedConfigCalls
-            .where((c) => c['speechRate'] == 0.75)
-            .toList();
+        final rateCalls =
+            capturedConfigCalls.where((c) => c['speechRate'] == 0.75).toList();
         expect(rateCalls, isNotEmpty);
         expect(rateCalls.last['language'], equals('vi-VN'),
             reason: 'Ngôn ngữ TTS phải luôn được cố định là tiếng Việt');

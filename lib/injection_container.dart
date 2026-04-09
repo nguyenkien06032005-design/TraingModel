@@ -58,11 +58,11 @@ Future<void> init() async {
   // TtsBloc stays lazy to match DetectionBloc and to avoid premature
   // initialization before MultiBlocProvider is ready.
   sl.registerLazySingleton<TtsBloc>(() => TtsBloc(
-    speakWarning:       sl(),
-    stopSpeaking:       sl(),
-    pauseSpeaking:      sl<PauseSpeakingUsecase>(),
-    settingsRepository: sl<SettingsRepository>(),
-  ));
+        speakWarning: sl(),
+        stopSpeaking: sl(),
+        pauseSpeaking: sl<PauseSpeakingUsecase>(),
+        settingsRepository: sl<SettingsRepository>(),
+      ));
 
   // Detection
   sl.registerSingleton(DetectionConfig());
@@ -80,27 +80,27 @@ Future<void> init() async {
   // one datasource singleton and trying to spawn competing isolates on the
   // same interpreter at the same time.
   sl.registerLazySingleton<DetectionBloc>(() => DetectionBloc(
-    loadModel:       sl<LoadModelUsecase>(),
-    closeModel:      sl<CloseModelUsecase>(),
-    detectFromFrame: sl<DetectionObjectFromFrame>(),
-    onWarning: ({
-      required String text,
-      required bool immediate,
-      required bool withVibration,
-    }) {
-      sl<TtsBloc>().add(
-        TtsSpeak(text, immediate: immediate, withVibration: withVibration),
-      );
-    },
-  ));
+        loadModel: sl<LoadModelUsecase>(),
+        closeModel: sl<CloseModelUsecase>(),
+        detectFromFrame: sl<DetectionObjectFromFrame>(),
+        onWarning: ({
+          required String text,
+          required bool immediate,
+          required bool withVibration,
+        }) {
+          sl<TtsBloc>().add(
+            TtsSpeak(text, immediate: immediate, withVibration: withVibration),
+          );
+        },
+      ));
 
   // Camera
   sl.registerSingleton(CameraService());
 
   sl.registerLazySingleton<SettingsBloc>(() => SettingsBloc(
-    sl<SettingsRepository>(),
-    sl<ConfigureTtsUsecase>(),
-    sl<StopSpeakingUsecase>(),
-    sl<DetectionConfig>(),
-  ));
+        sl<SettingsRepository>(),
+        sl<ConfigureTtsUsecase>(),
+        sl<StopSpeakingUsecase>(),
+        sl<DetectionConfig>(),
+      ));
 }

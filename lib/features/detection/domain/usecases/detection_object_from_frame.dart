@@ -6,11 +6,11 @@ class DetectionObjectFromFrame {
   final DetectionRepository _repository;
   DetectionObjectFromFrame(this._repository);
 
-  
   Future<List<DetectionObject>> call(
     CameraImage image, {
     required int rotationDegrees,
-  }) => _repository.detectFromFrame(
+  }) =>
+      _repository.detectFromFrame(
         image,
         rotationDegrees: rotationDegrees,
       );

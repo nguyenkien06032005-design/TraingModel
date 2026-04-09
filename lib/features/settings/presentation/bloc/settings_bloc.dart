@@ -19,10 +19,10 @@ import 'settings_state.dart';
 /// [speechRate] must also be passed into [ConfigureTtsUsecase] so the engine
 /// does not reset to its default speed.
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
-  final SettingsRepository  _repository;
+  final SettingsRepository _repository;
   final ConfigureTtsUsecase _configureTts;
   final StopSpeakingUsecase _stopSpeaking;
-  final DetectionConfig     _detectionConfig;
+  final DetectionConfig _detectionConfig;
 
   SettingsBloc(
     this._repository,
@@ -44,22 +44,22 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     emit(state.copyWith(isLoading: true));
 
-    final speechRate   = await _repository.getSpeechRate();
-    final confThresh   = await _repository.getConfidenceThreshold();
+    final speechRate = await _repository.getSpeechRate();
+    final confThresh = await _repository.getConfidenceThreshold();
     final voiceEnabled = await _repository.getVoiceEnabled();
-    final showPanel    = await _repository.getShowConfidencePanel();
-    final language     = AppConstants.ttsLanguage;
+    final showPanel = await _repository.getShowConfidencePanel();
+    final language = AppConstants.ttsLanguage;
 
     _detectionConfig.setConfidenceThreshold(confThresh);
     await _repository.setTtsLanguage(language);
     await _configureTts(speechRate: speechRate, language: language);
 
     emit(state.copyWith(
-      speechRate:          speechRate,
+      speechRate: speechRate,
       confidenceThreshold: confThresh,
-      voiceEnabled:        voiceEnabled,
+      voiceEnabled: voiceEnabled,
       showConfidencePanel: showPanel,
-      isLoading:           false,
+      isLoading: false,
     ));
   }
 
@@ -112,7 +112,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     final language = AppConstants.ttsLanguage;
     await _repository.setTtsLanguage(language);
     await _configureTts(
-      language:   language,
+      language: language,
       speechRate: state.speechRate,
     );
     emit(state.copyWith(ttsLanguage: language));

@@ -67,14 +67,14 @@ class ImageConverter {
     // Image dimensions after rotation is applied.
     final bool swapDims = rotationDegrees == 90 || rotationDegrees == 270;
     final int rotW = swapDims ? srcHeight : srcWidth;
-    final int rotH = swapDims ? srcWidth  : srcHeight;
+    final int rotH = swapDims ? srcWidth : srcHeight;
 
     // Letterbox scaling: fit the longest side into inputSize.
-    final double scale  = inputSize / (rotW > rotH ? rotW : rotH);
-    final int scaledW   = (rotW * scale).round().clamp(1, inputSize);
-    final int scaledH   = (rotH * scale).round().clamp(1, inputSize);
-    final int padL      = (inputSize - scaledW) ~/ 2;
-    final int padT      = (inputSize - scaledH) ~/ 2;
+    final double scale = inputSize / (rotW > rotH ? rotW : rotH);
+    final int scaledW = (rotW * scale).round().clamp(1, inputSize);
+    final int scaledH = (rotH * scale).round().clamp(1, inputSize);
+    final int padL = (inputSize - scaledW) ~/ 2;
+    final int padT = (inputSize - scaledH) ~/ 2;
 
     final int tensorLen = inputSize * inputSize * 3;
     final Float32List tensor =
@@ -82,12 +82,12 @@ class ImageConverter {
             ? reuseBuffer
             : Float32List(tensorLen);
 
-    final Uint8List yPlane  = planes[0];
-    final Uint8List uPlane  = planes[1];
-    final Uint8List vPlane  = planes[2];
-    final int yStride       = rowStrides[0];
-    final int uvStride      = rowStrides[1];
-    final int uvPixStride   = pixelStrides[1];
+    final Uint8List yPlane = planes[0];
+    final Uint8List uPlane = planes[1];
+    final Uint8List vPlane = planes[2];
+    final int yStride = rowStrides[0];
+    final int uvStride = rowStrides[1];
+    final int uvPixStride = pixelStrides[1];
 
     // Planar format: U and V live in separate planes, pixelStride = 1.
     // Semi-planar format (NV12/NV21): U and V are interleaved, pixelStride = 2.
@@ -104,7 +104,7 @@ class ImageConverter {
 
         // Fill padded regions with neutral gray.
         if (lx < 0 || lx >= scaledW || ly < 0 || ly >= scaledH) {
-          tensor[outIdx]     = gray;
+          tensor[outIdx] = gray;
           tensor[outIdx + 1] = gray;
           tensor[outIdx + 2] = gray;
           outIdx += 3;
@@ -118,7 +118,7 @@ class ImageConverter {
         // Apply inverse rotation from rotated space back to original source coordinates.
         int srcX, srcY;
         switch (rotationDegrees) {
-          case 90:  // Rotate left.
+          case 90: // Rotate left.
             srcX = ry;
             srcY = srcHeight - 1 - rx;
             break;
@@ -127,18 +127,18 @@ class ImageConverter {
             srcY = rx;
             break;
           case 180:
-            srcX = srcWidth  - 1 - rx;
+            srcX = srcWidth - 1 - rx;
             srcY = srcHeight - 1 - ry;
             break;
-          default:  // 0 degrees, no transform.
+          default: // 0 degrees, no transform.
             srcX = rx;
             srcY = ry;
         }
 
-        final int yIdx    = srcY * yStride + srcX;
-        final int uvRow   = srcY ~/ 2;
-        final int uvCol   = srcX ~/ 2;
-        final int uvIdx   = isPlanar
+        final int yIdx = srcY * yStride + srcX;
+        final int uvRow = srcY ~/ 2;
+        final int uvCol = srcX ~/ 2;
+        final int uvIdx = isPlanar
             ? uvRow * uvStride + uvCol
             : uvRow * uvStride + uvCol * uvPixStride;
 
@@ -146,7 +146,7 @@ class ImageConverter {
         if (yIdx >= yPlane.length ||
             uvIdx >= uPlane.length ||
             uvIdx >= vPlane.length) {
-          tensor[outIdx]     = gray;
+          tensor[outIdx] = gray;
           tensor[outIdx + 1] = gray;
           tensor[outIdx + 2] = gray;
           outIdx += 3;
@@ -158,8 +158,9 @@ class ImageConverter {
         final int vv = vPlane[uvIdx] - 128;
 
         // Convert BT.601 YCbCr to RGB, clamp to [0, 255], then normalize.
-        tensor[outIdx]     = (yy + 1.402 * vv).clamp(0, 255) / 255.0;
-        tensor[outIdx + 1] = (yy - 0.344136 * uu - 0.714136 * vv).clamp(0, 255) / 255.0;
+        tensor[outIdx] = (yy + 1.402 * vv).clamp(0, 255) / 255.0;
+        tensor[outIdx + 1] =
+            (yy - 0.344136 * uu - 0.714136 * vv).clamp(0, 255) / 255.0;
         tensor[outIdx + 2] = (yy + 1.772 * uu).clamp(0, 255) / 255.0;
         outIdx += 3;
       }
@@ -167,11 +168,11 @@ class ImageConverter {
 
     return LetterboxResult(
       inputTensor: tensor,
-      scale:       scale,
-      padLeft:     padL / inputSize,
-      padTop:      padT / inputSize,
-      origWidth:   rotW,
-      origHeight:  rotH,
+      scale: scale,
+      padLeft: padL / inputSize,
+      padTop: padT / inputSize,
+      origWidth: rotW,
+      origHeight: rotH,
     );
   }
 
@@ -181,14 +182,15 @@ class ImageConverter {
     img.Image image,
     int inputSize,
   ) {
-    final scale   = inputSize / (image.width > image.height ? image.width : image.height);
-    final scaledW = (image.width  * scale).round().clamp(1, inputSize);
+    final scale =
+        inputSize / (image.width > image.height ? image.width : image.height);
+    final scaledW = (image.width * scale).round().clamp(1, inputSize);
     final scaledH = (image.height * scale).round().clamp(1, inputSize);
-    final padL    = (inputSize - scaledW) ~/ 2;
-    final padT    = (inputSize - scaledH) ~/ 2;
+    final padL = (inputSize - scaledW) ~/ 2;
+    final padT = (inputSize - scaledH) ~/ 2;
     final resized = img.copyResize(image, width: scaledW, height: scaledH);
-    final tensor  = Float32List(inputSize * inputSize * 3);
-    const gray    = 114.0 / 255.0;
+    final tensor = Float32List(inputSize * inputSize * 3);
+    const gray = 114.0 / 255.0;
 
     int outIdx = 0;
     for (int y = 0; y < inputSize; y++) {
@@ -196,12 +198,12 @@ class ImageConverter {
         final rx = x - padL;
         final ry = y - padT;
         if (rx < 0 || ry < 0 || rx >= scaledW || ry >= scaledH) {
-          tensor[outIdx]     = gray;
+          tensor[outIdx] = gray;
           tensor[outIdx + 1] = gray;
           tensor[outIdx + 2] = gray;
         } else {
-          final pixel        = resized.getPixel(rx, ry);
-          tensor[outIdx]     = pixel.r / 255.0;
+          final pixel = resized.getPixel(rx, ry);
+          tensor[outIdx] = pixel.r / 255.0;
           tensor[outIdx + 1] = pixel.g / 255.0;
           tensor[outIdx + 2] = pixel.b / 255.0;
         }
@@ -211,11 +213,11 @@ class ImageConverter {
 
     return LetterboxResult(
       inputTensor: tensor,
-      scale:       scale,
-      padLeft:     padL / inputSize,
-      padTop:      padT / inputSize,
-      origWidth:   image.width,
-      origHeight:  image.height,
+      scale: scale,
+      padLeft: padL / inputSize,
+      padTop: padT / inputSize,
+      origWidth: image.width,
+      origHeight: image.height,
     );
   }
 
@@ -241,16 +243,16 @@ class ImageConverter {
     int w,
     int h,
   ) {
-    final rgb    = Uint8List(w * h * 3);
+    final rgb = Uint8List(w * h * 3);
     final yPlane = planes[0];
     final uPlane = planes[1];
     final vPlane = planes[2];
-    final yStr   = strides[0];
-    final uvStr  = strides[1];
+    final yStr = strides[0];
+    final uvStr = strides[1];
     int out = 0;
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        final yIndex  = y * yStr + x;
+        final yIndex = y * yStr + x;
         final uvIndex = (y ~/ 2) * uvStr + (x ~/ 2);
 
         if (yIndex >= yPlane.length ||
@@ -271,8 +273,11 @@ class ImageConverter {
       }
     }
     return img.Image.fromBytes(
-        width: w, height: h,
-        bytes: rgb.buffer, numChannels: 3, order: img.ChannelOrder.rgb);
+        width: w,
+        height: h,
+        bytes: rgb.buffer,
+        numChannels: 3,
+        order: img.ChannelOrder.rgb);
   }
 
   /// Semi-planar format (NV12/NV21): U and V are interleaved.
@@ -283,18 +288,18 @@ class ImageConverter {
     int w,
     int h,
   ) {
-    final rgb      = Uint8List(w * h * 3);
-    final yPlane   = planes[0];
-    final uPlane   = planes[1];
-    final vPlane   = planes[2];
-    final yStr     = rowStrides[0];
-    final uvStr    = rowStrides[1];
-    final uvPxStr  = pixelStrides[1];
+    final rgb = Uint8List(w * h * 3);
+    final yPlane = planes[0];
+    final uPlane = planes[1];
+    final vPlane = planes[2];
+    final yStr = rowStrides[0];
+    final uvStr = rowStrides[1];
+    final uvPxStr = pixelStrides[1];
     int out = 0;
 
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        final yIndex  = y * yStr + x;
+        final yIndex = y * yStr + x;
         final uvIndex = (y ~/ 2) * uvStr + (x ~/ 2) * uvPxStr;
 
         if (yIndex >= yPlane.length ||
@@ -316,8 +321,11 @@ class ImageConverter {
     }
 
     return img.Image.fromBytes(
-      width: w, height: h,
-      bytes: rgb.buffer, numChannels: 3, order: img.ChannelOrder.rgb,
+      width: w,
+      height: h,
+      bytes: rgb.buffer,
+      numChannels: 3,
+      order: img.ChannelOrder.rgb,
     );
   }
 
@@ -336,29 +344,29 @@ class ImageConverter {
     required double padLeft,
     required double padTop,
     required double scale,
-    required int    origWidth,
-    required int    origHeight,
-    required int    inputSize,
+    required int origWidth,
+    required int origHeight,
+    required int inputSize,
   }) {
     // Convert normalized values to pixel coordinates in inputSize space.
-    final cxPx   = cx * inputSize;
-    final cyPx   = cy * inputSize;
-    final wPx    = bw * inputSize;
-    final hPx    = bh * inputSize;
+    final cxPx = cx * inputSize;
+    final cyPx = cy * inputSize;
+    final wPx = bw * inputSize;
+    final hPx = bh * inputSize;
     final padLPx = padLeft * inputSize;
-    final padTPx = padTop  * inputSize;
+    final padTPx = padTop * inputSize;
 
     // Remove padding, then invert the scale.
     final x1 = (cxPx - wPx / 2 - padLPx) / scale;
     final y1 = (cyPx - hPx / 2 - padTPx) / scale;
-    final w  = wPx / scale;
-    final h  = hPx / scale;
+    final w = wPx / scale;
+    final h = hPx / scale;
 
     return (
-      left:   (x1 / origWidth).clamp(0.0, 1.0),
-      top:    (y1 / origHeight).clamp(0.0, 1.0),
-      width:  (w  / origWidth).clamp(0.0, 1.0),
-      height: (h  / origHeight).clamp(0.0, 1.0),
+      left: (x1 / origWidth).clamp(0.0, 1.0),
+      top: (y1 / origHeight).clamp(0.0, 1.0),
+      width: (w / origWidth).clamp(0.0, 1.0),
+      height: (h / origHeight).clamp(0.0, 1.0),
     );
   }
 }

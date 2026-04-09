@@ -90,7 +90,8 @@ void main() {
     });
 
     test('systemError returns non-empty Vietnamese phrase', () {
-      expect(VoiceHelper.systemError(), equals('Lỗi hệ thống, vui lòng thử lại'));
+      expect(
+          VoiceHelper.systemError(), equals('Lỗi hệ thống, vui lòng thử lại'));
     });
   });
 }

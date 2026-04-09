@@ -281,7 +281,8 @@ void main() {
       ],
       verify: (_) {
         expect(capturedText, isNull,
-            reason: 'Không có vật thể nào được phát hiện nên không được gọi callback');
+            reason:
+                'Không có vật thể nào được phát hiện nên không được gọi callback');
       },
     );
   });
@@ -315,8 +316,7 @@ void main() {
   // CloseModelUsecase contract
 
   group('CloseModelUsecase', () {
-    test('call(NoParams()) chuyển tiếp sang repository.closeModel()',
-        () async {
+    test('call(NoParams()) chuyển tiếp sang repository.closeModel()', () async {
       final mock = MockCloseModelUsecase();
       when(() => mock.call(any())).thenAnswer((_) async {});
 

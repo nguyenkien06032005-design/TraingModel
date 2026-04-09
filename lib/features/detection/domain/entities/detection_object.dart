@@ -17,10 +17,10 @@ class BoundingBox extends Equatable {
     required this.height,
   });
 
-  double get right   => left + width;
-  double get bottom  => top  + height;
-  double get centerX => left + width  / 2;
-  double get centerY => top  + height / 2;
+  double get right => left + width;
+  double get bottom => top + height;
+  double get centerX => left + width / 2;
+  double get centerY => top + height / 2;
 
   /// Bounding-box area in normalized coordinates.
   /// Used as a distance proxy: the larger the area, the closer the object.
@@ -57,8 +57,8 @@ class BoundingBox extends Equatable {
 /// bounding box occupies more than [AppConstants.dangerousAreaThreshold] of
 /// the frame area.
 class DetectionObject extends Equatable {
-  final String      label;
-  final double      confidence;
+  final String label;
+  final double confidence;
   final BoundingBox boundingBox;
 
   const DetectionObject({
@@ -69,10 +69,10 @@ class DetectionObject extends Equatable {
 
   /// TTS warning sentence that combines label, position, and distance.
   String get voiceWarning => VoiceHelper.buildWarning(
-    label:    label,
-    position: boundingBox.horizontalPosition,
-    distance: boundingBox.proximityLabel,
-  );
+        label: label,
+        position: boundingBox.horizontalPosition,
+        distance: boundingBox.proximityLabel,
+      );
 
   /// Whether the object is large enough to count as an urgent hazard.
   /// Triggers immediate TTS and vibration feedback.

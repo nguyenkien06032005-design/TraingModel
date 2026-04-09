@@ -72,11 +72,11 @@ class TrackingDatasource implements DetectionLocalDatasource {
 
 void main() {
   late TrackingDatasource datasource;
-  late MockCameraImage    mockImage;
+  late MockCameraImage mockImage;
 
   setUp(() {
     datasource = TrackingDatasource();
-    mockImage  = MockCameraImage();
+    mockImage = MockCameraImage();
   });
 
   // _isolateBusy is always reset after runInference
@@ -92,11 +92,15 @@ void main() {
 
     test('isolateBusy is reset after successful inference', () async {
       datasource.resultFactory = () => [
-        {
-          'label': 'person', 'confidence': 0.85,
-          'left': 0.1, 'top': 0.1, 'width': 0.3, 'height': 0.4,
-        }
-      ];
+            {
+              'label': 'person',
+              'confidence': 0.85,
+              'left': 0.1,
+              'top': 0.1,
+              'width': 0.3,
+              'height': 0.4,
+            }
+          ];
 
       await datasource.runInference(mockImage, rotationDegrees: 0);
 
@@ -105,7 +109,7 @@ void main() {
     });
 
     test('isolateBusy is reset after inference throws exception', () async {
-      datasource.shouldThrow   = true;
+      datasource.shouldThrow = true;
       datasource.exceptionToThrow = Exception('GPU out of memory');
 
       try {
@@ -113,7 +117,8 @@ void main() {
       } catch (_) {}
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'isolateBusy must return to false even if there\'s an exception');
+          reason:
+              'isolateBusy must return to false even if there\'s an exception');
     });
 
     test('after exception, subsequent inference runs normally', () async {
@@ -124,13 +129,18 @@ void main() {
 
       datasource.shouldThrow = false;
       datasource.resultFactory = () => [
-        {
-          'label': 'bicycle', 'confidence': 0.7,
-          'left': 0.2, 'top': 0.2, 'width': 0.2, 'height': 0.3,
-        }
-      ];
+            {
+              'label': 'bicycle',
+              'confidence': 0.7,
+              'left': 0.2,
+              'top': 0.2,
+              'width': 0.2,
+              'height': 0.3,
+            }
+          ];
 
-      final results = await datasource.runInference(mockImage, rotationDegrees: 0);
+      final results =
+          await datasource.runInference(mockImage, rotationDegrees: 0);
 
       expect(results, isNotEmpty,
           reason: 'After exception, subsequent inference must still run. '
@@ -139,7 +149,9 @@ void main() {
       expect(datasource.inferenceCallCount, equals(2));
     });
 
-    test('concurrently called, second call returns [] if first is still running', () async {
+    test(
+        'concurrently called, second call returns [] if first is still running',
+        () async {
       int callCount = 0;
       final ds = TrackingDatasource();
       await ds.loadModel();
@@ -172,20 +184,26 @@ void main() {
 
   group('DetectionDatasource contract', () {
     test('runInference returns [] before loadModel is called', () async {
-      final result = await datasource.runInference(mockImage, rotationDegrees: 0);
+      final result =
+          await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty);
     });
 
     test('after loadModel, runInference executes normally', () async {
       await datasource.loadModel();
       datasource.resultFactory = () => [
-        {
-          'label': 'car', 'confidence': 0.9,
-          'left': 0.0, 'top': 0.0, 'width': 0.5, 'height': 0.5,
-        }
-      ];
+            {
+              'label': 'car',
+              'confidence': 0.9,
+              'left': 0.0,
+              'top': 0.0,
+              'width': 0.5,
+              'height': 0.5,
+            }
+          ];
 
-      final result = await datasource.runInference(mockImage, rotationDegrees: 90);
+      final result =
+          await datasource.runInference(mockImage, rotationDegrees: 90);
 
       expect(result.length, equals(1));
       expect(result.first['label'], 'car');
@@ -195,9 +213,11 @@ void main() {
       await datasource.loadModel();
       await datasource.closeModel();
 
-      final result = await datasource.runInference(mockImage, rotationDegrees: 0);
+      final result =
+          await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty,
-          reason: 'After closeModel(), inference must return [] since model is unloaded');
+          reason:
+              'After closeModel(), inference must return [] since model is unloaded');
     });
   });
 }

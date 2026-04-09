@@ -20,9 +20,9 @@ import '../error/exceptions.dart' as ex;
 class CameraService {
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
-  int _currentIndex    = 0;
+  int _currentIndex = 0;
   int _rotationDegrees = 0;
-  int _busyDropCount   = 0;
+  int _busyDropCount = 0;
   int _throttleDropCount = 0;
 
   DateTime _lastFrameTime = DateTime.now();
@@ -35,7 +35,7 @@ class CameraService {
   bool _isProcessingFrame = false;
 
   bool _isInitializing = false;
-  bool _isDisposing    = false;
+  bool _isDisposing = false;
   Future<void>? _disposeFuture;
 
   /// Incremented every time the camera is initialized or switched.
@@ -43,10 +43,10 @@ class CameraService {
   /// no longer matches the latest value.
   int _streamGeneration = 0;
 
-  CameraController? get controller        => _controller;
-  bool get isInitialized  => _controller?.value.isInitialized ?? false;
-  bool get isStreaming     => _controller?.value.isStreamingImages ?? false;
-  bool get isFrontCamera  =>
+  CameraController? get controller => _controller;
+  bool get isInitialized => _controller?.value.isInitialized ?? false;
+  bool get isStreaming => _controller?.value.isStreamingImages ?? false;
+  bool get isFrontCamera =>
       _cameras.isNotEmpty &&
       _cameras[_currentIndex].lensDirection == CameraLensDirection.front;
   int get sensorOrientation =>
@@ -68,7 +68,9 @@ class CameraService {
     try {
       _isDisposing = false;
       _cameras = await availableCameras();
-      if (_cameras.isEmpty) throw const ex.CameraException('Không tìm thấy camera');
+      if (_cameras.isEmpty) {
+        throw const ex.CameraException('Không tìm thấy camera');
+      }
       _currentIndex = cameraIndex.clamp(0, _cameras.length - 1);
       await _setupController(_cameras[_currentIndex]);
     } finally {
@@ -133,10 +135,10 @@ class CameraService {
       return;
     }
 
-    _lastFrameTime      = DateTime.now();
-    _isProcessingFrame  = false;
-    _busyDropCount      = 0;
-    _throttleDropCount  = 0;
+    _lastFrameTime = DateTime.now();
+    _isProcessingFrame = false;
+    _busyDropCount = 0;
+    _throttleDropCount = 0;
 
     final int streamGeneration = ++_streamGeneration;
 
@@ -152,7 +154,8 @@ class CameraService {
       if (_isProcessingFrame) {
         _busyDropCount++;
         if (kDebugMode && _busyDropCount % 30 == 0) {
-          debugPrint('[CameraService] dropped $_busyDropCount frames: inference busy');
+          debugPrint(
+              '[CameraService] dropped $_busyDropCount frames: inference busy');
         }
         return;
       }
@@ -162,7 +165,8 @@ class CameraService {
       if (now.difference(_lastFrameTime).inMilliseconds < _minFrameMs) {
         _throttleDropCount++;
         if (kDebugMode && _throttleDropCount % 30 == 0) {
-          debugPrint('[CameraService] dropped $_throttleDropCount frames: fps throttle');
+          debugPrint(
+              '[CameraService] dropped $_throttleDropCount frames: fps throttle');
         }
         return;
       }
@@ -179,7 +183,8 @@ class CameraService {
       debugPrint('[CameraService] startImageStream error: $error');
     }));
 
-    debugPrint('[CameraService] stream started (~${AppConstants.activeInferenceFps}fps)');
+    debugPrint(
+        '[CameraService] stream started (~${AppConstants.activeInferenceFps}fps)');
   }
 
   Future<void> stopImageStream() async {
@@ -214,8 +219,8 @@ class CameraService {
     }
 
     final controller = _controller;
-    _controller        = null;
-    _isDisposing       = true;
+    _controller = null;
+    _isDisposing = true;
     _streamGeneration++;
     _isProcessingFrame = false;
 
@@ -236,8 +241,8 @@ class CameraService {
       }
     } finally {
       _isProcessingFrame = false;
-      _isDisposing       = false;
-      _disposeFuture     = null;
+      _isDisposing = false;
+      _disposeFuture = null;
       completer.complete();
     }
   }

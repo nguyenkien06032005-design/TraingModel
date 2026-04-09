@@ -60,17 +60,22 @@ class _TrackedBox {
   /// Applies exponential smoothing so bounding boxes move smoothly instead of
   /// jumping abruptly between frames.
   void update(BoundingBox box, DateTime now) {
-    left   = left   * (1 - alpha) + box.left   * alpha;
-    top    = top    * (1 - alpha) + box.top    * alpha;
-    width  = width  * (1 - alpha) + box.width  * alpha;
+    left = left * (1 - alpha) + box.left * alpha;
+    top = top * (1 - alpha) + box.top * alpha;
+    width = width * (1 - alpha) + box.width * alpha;
     height = height * (1 - alpha) + box.height * alpha;
     missedFrames = 0;
     lastSeenAt = now;
   }
 
   SmoothedBox snapshot() => SmoothedBox(
-        left: left, top: top, width: width, height: height,
-        label: label, trackId: trackId, missedFrames: missedFrames,
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        label: label,
+        trackId: trackId,
+        missedFrames: missedFrames,
       );
 }
 
@@ -122,9 +127,13 @@ class BoxTracker {
       } else {
         final trackId = _nextTrackId++;
         _tracked[trackId] = _TrackedBox(
-          trackId: trackId, left: box.left, top: box.top,
-          width: box.width, height: box.height,
-          label: det.label, lastSeenAt: timestamp,
+          trackId: trackId,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          label: det.label,
+          lastSeenAt: timestamp,
         );
         usedTrackIds.add(trackId);
       }
@@ -139,8 +148,8 @@ class BoxTracker {
       ..sort((a, b) => a.trackId.compareTo(b.trackId));
   }
 
-  double _iou(double al, double at, double aw, double ah,
-      double bl, double bt, double bw, double bh) {
+  double _iou(double al, double at, double aw, double ah, double bl, double bt,
+      double bw, double bh) {
     final iL = al > bl ? al : bl;
     final iT = at > bt ? at : bt;
     final iR = (al + aw) < (bl + bw) ? (al + aw) : (bl + bw);
@@ -268,7 +277,7 @@ class BoundingBoxPainter extends CustomPainter {
 
     _strokePaint.color = color.withValues(alpha: 0.85 * opacity);
     _cornerPaint.color = color.withValues(alpha: opacity);
-    _labelPaint.color  = color.withValues(alpha: 0.9);
+    _labelPaint.color = color.withValues(alpha: 0.9);
 
     canvas.drawRect(rect, _strokePaint);
     _drawCorners(canvas, rect, _cornerPaint);
@@ -296,8 +305,8 @@ class BoundingBoxPainter extends CustomPainter {
     );
   }
 
-  void _drawLabel(Canvas canvas, Size size, Rect rect,
-      String label, Paint bgPaint) {
+  void _drawLabel(
+      Canvas canvas, Size size, Rect rect, String label, Paint bgPaint) {
     final tp = _getOrCreatePainter(label);
     final lw = tp.width + 10;
     final lh = tp.height + 5;

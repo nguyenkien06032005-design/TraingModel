@@ -25,10 +25,10 @@ class TtsService {
   /// The map is pruned periodically so it cannot grow without bound.
   final Map<String, DateTime> _lastSpoken = {};
 
-  String _language  = AppConstants.ttsLanguage;
+  String _language = AppConstants.ttsLanguage;
   double _speechRate = AppConstants.ttsSpeechRate;
-  double _pitch      = AppConstants.ttsPitch;
-  double _volume     = AppConstants.ttsVolume;
+  double _pitch = AppConstants.ttsPitch;
+  double _volume = AppConstants.ttsVolume;
 
   Future<void> initialize({
     String? language,
@@ -38,15 +38,15 @@ class TtsService {
   }) async {
     _language = AppConstants.ttsLanguage;
     if (speechRate != null) _speechRate = speechRate;
-    if (pitch      != null) _pitch      = pitch;
-    if (volume     != null) _volume     = volume;
+    if (pitch != null) _pitch = pitch;
+    if (volume != null) _volume = volume;
 
     await _tts.setLanguage(_language);
     await _tts.setSpeechRate(_speechRate);
     await _tts.setPitch(_pitch);
     await _tts.setVolume(_volume);
 
-    _tts.setStartHandler(()  => _isSpeaking = true);
+    _tts.setStartHandler(() => _isSpeaking = true);
     _tts.setCompletionHandler(() {
       _isSpeaking = false;
       _processQueue();
