@@ -59,7 +59,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       confidenceThreshold: confThresh,
       voiceEnabled:        voiceEnabled,
       showConfidencePanel: showPanel,
-      ttsLanguage:         language,
       isLoading:           false,
     ));
   }
@@ -71,7 +70,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     await _repository.setSpeechRate(e.rate);
     // Pass the current language together with the new rate so the engine
     // does not reset to its defaults.
-    await _configureTts(speechRate: e.rate, language: state.ttsLanguage);
+    await _configureTts(speechRate: e.rate, language: AppConstants.ttsLanguage);
     emit(state.copyWith(speechRate: e.rate));
   }
 

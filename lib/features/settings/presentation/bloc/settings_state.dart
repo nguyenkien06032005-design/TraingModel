@@ -14,7 +14,7 @@ class SettingsState extends Equatable {
     this.confidenceThreshold  = AppConstants.confidenceThreshold,
     this.voiceEnabled         = true,
     this.showConfidencePanel  = true,
-    this.ttsLanguage          = AppConstants.ttsLanguage,
+    this.ttsLanguage          = '',
     this.isLoading            = false,
   });
 

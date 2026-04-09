@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -57,7 +58,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         super(const DetectionInitial()) {
     on<DetectionStarted>(_onStarted);
     on<DetectionStopped>(_onStopped);
-    on<DetectionFrameReceived>(_onFrameReceived);
+    on<DetectionFrameReceived>(_onFrameReceived, transformer: droppable());
   }
 
   Future<void> _onStarted(
@@ -163,8 +164,9 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
       final isApproaching = oldArea != null && d.boundingBox.area > oldArea * 1.3;
       final isStable      = currentCount == 3;
+      final isFirstSeen   = currentCount == 1;
 
-      if (isApproaching || isStable) candidates.add(d);
+      if (isApproaching || isStable || isFirstSeen) candidates.add(d);
     }
 
     _previousObjects   = currentObjects;

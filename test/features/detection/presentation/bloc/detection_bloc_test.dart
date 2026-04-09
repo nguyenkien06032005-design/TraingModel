@@ -226,48 +226,31 @@ void main() {
     );
   });
 
-  test(
-    // Frame-dropping is NOT DetectionBloc's responsibility.
-    // CameraService uses a _isProcessingFrame lock + the onDone callback to
-    // prevent a new frame from being dispatched while inference is running.
-    // DetectionBloc itself processes every event it receives — no self-guard.
-    //
-    // Key contract: both dispatched frames must go through detectFromFrame().
-    // We verify that here via verify().called(2) — this is the meaningful
-    // invariant regardless of how many state emissions Equatable deduplicates
-    // (microsecond timestamps can collide on fast CI runners).
-    //
-    // We use a plain test() + StreamSubscription rather than blocTest because
-    // blocTest closes its listener when the act Future resolves, which races
-    // with async event processing in the BLoC.
-    'xử lý độc lập hai frame liên tiếp (khóa frame thuộc trách nhiệm CameraService)',
-    () async {
+  // With `droppable()` transformer, frames arriving while inference is
+  // in-flight are discarded (exhaustMap semantics). CameraService already
+  // provides a frame lock, droppable() is defense-in-depth at the BLoC layer.
+  blocTest<DetectionBloc, DetectionState>(
+    'droppable: hai frame đến cùng lúc — chỉ xử lý 1 frame, frame 2 bị bỏ',
+    build: () {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async {
         await Future.delayed(const Duration(milliseconds: 5));
         return [_safeObject()];
       });
-
-      final bloc = buildBloc()..emit(const DetectionModelReady());
-      final emitted = <DetectionState>[];
-      final sub = bloc.stream.listen(emitted.add);
-
+      return buildBloc();
+    },
+    seed: () => const DetectionModelReady(),
+    act: (bloc) async {
       bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {}));
       bloc.add(DetectionFrameReceived(mockCameraImage, 90, () {}));
-
-      // Wait well past 2 × 5 ms for both sequential inferences to complete.
       await Future.delayed(const Duration(milliseconds: 50));
-      await sub.cancel();
-      await bloc.close();
-
-      // Primary contract: both frames must reach the inference engine.
+    },
+    expect: () => [isA<DetectionSuccess>()],
+    verify: (_) {
+      // droppable discards the second frame while the first is in-flight.
       verify(() => mockDetectFromFrame(any(),
-          rotationDegrees: any(named: 'rotationDegrees'))).called(2);
-
-      // At least one DetectionSuccess must have been emitted.
-      expect(emitted, isNotEmpty);
-      expect(emitted, everyElement(isA<DetectionSuccess>()));
+          rotationDegrees: any(named: 'rotationDegrees'))).called(1);
     },
   );
 
