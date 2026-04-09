@@ -390,7 +390,7 @@ class _CameraLayer extends StatelessWidget {
     if (service.isFrontCamera) {
       return Transform(
         alignment: Alignment.center,
-        transform: Matrix4.identity()..scale(-1.0, 1.0),
+        transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),
         child: CameraPreview(ctrl),
       );
     }
