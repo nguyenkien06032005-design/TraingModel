@@ -28,7 +28,7 @@ lib/features/{feature_name}/
 ### State Management: Flutter BLoC
 - Uses `flutter_bloc` (v9.1.1) for state management
 - Event-driven: UI dispatches events → BLoC processes → state updates
-- Example: [lib/features/tts/presentation/bloc/tts_event.dart](lib/features/tts/presentation/bloc/tts_event.dart)
+- Example: [lib/features/tts/presentation/bloc/tts_event.dart](../lib/features/tts/presentation/bloc/tts_event.dart)
 
 ### Key External Services
 
@@ -36,19 +36,19 @@ lib/features/{feature_name}/
    - Model path: `assets/models/yolov8n_safevision.tflite`
    - Labels: `assets/models/labels.txt`
    - Inference runs in a separate Dart isolate to avoid blocking the UI thread
-   - Initialization: [lib/features/detection/data/datasources/detection_local_datasource_impl.dart](lib/features/detection/data/datasources/detection_local_datasource_impl.dart)
+   - Initialization: [lib/features/detection/data/datasources/detection_local_datasource_impl.dart](../lib/features/detection/data/datasources/detection_local_datasource_impl.dart)
 
 2. **Camera:** Real-time capture for object detection
-   - Managed by `CameraService` in [lib/core/services/camera_service.dart](lib/core/services/camera_service.dart)
+   - Managed by `CameraService` in [lib/core/services/camera_service.dart](../lib/core/services/camera_service.dart)
    - Resolution: Medium preset for a balance of speed vs. quality
    - Frame rate: 6 FPS (configured via `AppConstants.activeInferenceFps`)
 
 3. **Text-to-Speech (TTS):** Voice feedback for accessibility
-   - Service: [lib/features/tts/data/datasources/tts_service.dart](lib/features/tts/data/datasources/tts_service.dart)
-   - Helper: [lib/core/utils/voice_helper.dart](lib/core/utils/voice_helper.dart)
+   - Service: [lib/features/tts/data/datasources/tts_service.dart](../lib/features/tts/data/datasources/tts_service.dart)
+   - Helper: [lib/core/utils/voice_helper.dart](../lib/core/utils/voice_helper.dart)
 
 4. **Permissions:** Camera access is required at startup
-   - Utility: [lib/core/utils/permission_handler.dart](lib/core/utils/permission_handler.dart)
+   - Utility: [lib/core/utils/permission_handler.dart](../lib/core/utils/permission_handler.dart)
 
 ## Critical Implementation Details
 
@@ -87,7 +87,7 @@ two parameters — it is called directly from `DetectionBloc`.
 
 ### UI Accessibility Requirements
 
-- **High Contrast Theme:** [lib/config/theme/app_theme.dart](lib/config/theme/app_theme.dart)
+- **High Contrast Theme:** [lib/config/theme/app_theme.dart](../lib/config/theme/app_theme.dart)
 - **Large Buttons:** Minimum 80dp height, 24pt font size
 - **Voice Feedback:** All key actions announced via TTS
 - **Haptic Feedback:** Vibration when a dangerous object is detected (only when
@@ -114,13 +114,13 @@ flutter test --coverage   # Run with coverage report
 ```
 
 ### Code Quality Standards
-- Lint rules: [analysis_options.yaml](analysis_options.yaml) (extends flutter_lints)
+- Lint rules: [analysis_options.yaml](../analysis_options.yaml) (extends flutter_lints)
 - Dart version: >=3.0.0 <4.0.0
 - Coverage target: minimum 80% (enforced in CI)
 - Comments describe ROLE and INVARIANTS — not change history
 
 ### Asset Configuration
-- Models, icons, images, and sounds are declared in [pubspec.yaml](pubspec.yaml)
+- Models, icons, images, and sounds are declared in [pubspec.yaml](../pubspec.yaml)
 - Runtime asset loading: `rootBundle.loadString()` for labels,
   `Interpreter.fromBuffer()` for the model (via TransferableTypedData to the isolate)
 
@@ -134,12 +134,12 @@ flutter test --coverage   # Run with coverage report
 5. Update the AI model in `assets/models/` if required
 
 ### Fixing Permission Issues
-- Check [lib/core/utils/permission_handler.dart](lib/core/utils/permission_handler.dart)
+- Check [lib/core/utils/permission_handler.dart](../lib/core/utils/permission_handler.dart)
 - `AppPermissionHandler.requestCamera()` throws `PermissionException` if denied
 - Call and await it before `CameraService.initialize()`
 
 ### Accessibility Improvements
-- Modify the theme in [lib/config/theme/app_theme.dart](lib/config/theme/app_theme.dart)
+- Modify the theme in [lib/config/theme/app_theme.dart](../lib/config/theme/app_theme.dart)
 - Add TTS calls via `TtsBloc.add(TtsSpeak(...))` for new actions
 - Test with high contrast + large font settings
 

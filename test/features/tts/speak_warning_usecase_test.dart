@@ -52,7 +52,7 @@ void main() {
       verify(() => mockRepo.speakImmediate(text)).called(1);
     });
 
-    test('call() không gọi speakImmediate()', () async {
+    test('call() does not call speakImmediate()', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async => true);
 
       await usecase('test');
@@ -60,7 +60,7 @@ void main() {
       verifyNever(() => mockRepo.speakImmediate(any()));
     });
 
-    test('immediate() không gọi speakWarning()', () async {
+    test('immediate() does not call speakWarning()', () async {
       when(() => mockRepo.speakImmediate(any())).thenAnswer((_) async => true);
 
       await usecase.immediate('test');
@@ -68,7 +68,7 @@ void main() {
       verifyNever(() => mockRepo.speakWarning(any()));
     });
 
-    test('truyền nguyên văn nội dung sang repository', () async {
+    test('passes exact content to repository', () async {
       const exactText = 'Cảnh báo! Xe đạp ở bên trái, khoảng cách trung bình.';
       when(() => mockRepo.speakWarning(exactText)).thenAnswer((_) async => true);
 
@@ -91,7 +91,7 @@ void main() {
       expect(() => usecase.immediate('text'), throwsException);
     });
 
-    test('chuỗi rỗng vẫn được chuyển tiếp sang repository', () async {
+    test('empty string is still forwarded to repository', () async {
       when(() => mockRepo.speakWarning('')).thenAnswer((_) async => true);
 
       await usecase('');
@@ -99,7 +99,7 @@ void main() {
       verify(() => mockRepo.speakWarning('')).called(1);
     });
 
-    test('mỗi lần gọi đều được chuyển tiếp độc lập', () async {
+    test('each call is forwarded independently', () async {
       when(() => mockRepo.speakWarning(any())).thenAnswer((_) async => true);
 
       await usecase('cảnh báo thứ nhất');
@@ -125,7 +125,7 @@ void main() {
       verify(() => mockRepo.stop()).called(1);
     });
 
-    test('không gọi các hàm phát giọng nói', () async {
+    test('does not call voice rendering functions', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
       await usecase();
@@ -140,7 +140,7 @@ void main() {
       expect(() => usecase(), throwsException);
     });
 
-    test('nhiều lần gọi stop đều được chuyển tiếp đầy đủ', () async {
+    test('multiple stop calls are all fully forwarded', () async {
       when(() => mockRepo.stop()).thenAnswer((_) async {});
 
       await usecase();
@@ -303,29 +303,29 @@ void main() {
   // ─── TtsEvent equality ────────────────────────────────────────────────────
 
   group('So sánh TtsEvent', () {
-    test('TtsSpeak với cùng tham số thì bằng nhau', () {
+    test('TtsSpeak with identical parameters are equal', () {
       const a = TtsSpeak('xin chào', immediate: true, withVibration: true);
       const b = TtsSpeak('xin chào', immediate: true, withVibration: true);
       expect(a, equals(b));
     });
 
-    test('TtsSpeak với nội dung khác nhau thì không bằng nhau', () {
+    test('TtsSpeak with different contents are not equal', () {
       const a = TtsSpeak('xin chào');
       const b = TtsSpeak('tạm biệt');
       expect(a, isNot(equals(b)));
     });
 
-    test('TtsSpeak với cờ immediate khác nhau thì không bằng nhau', () {
+    test('TtsSpeak with different immediate flags are not equal', () {
       const a = TtsSpeak('xin chào', immediate: true);
       const b = TtsSpeak('xin chào', immediate: false);
       expect(a, isNot(equals(b)));
     });
 
-    test('TtsStop bằng với một TtsStop khác', () {
+    test('TtsStop equals another TtsStop', () {
       expect(const TtsStop(), equals(const TtsStop()));
     });
 
-    test('TtsPause bằng với một TtsPause khác', () {
+    test('TtsPause equals another TtsPause', () {
       expect(const TtsPause(), equals(const TtsPause()));
     });
   });
@@ -336,11 +336,11 @@ void main() {
     test('TtsInitial bằng nhau', () =>
         expect(const TtsInitial(), equals(const TtsInitial())));
 
-    test('TtsSpeaking với cùng nội dung thì bằng nhau', () {
+    test('TtsSpeaking with identical content are equal', () {
       expect(const TtsSpeaking('text'), equals(const TtsSpeaking('text')));
     });
 
-    test('TtsSpeaking với nội dung khác nhau thì không bằng nhau', () {
+    test('TtsSpeaking with different contents are not equal', () {
       expect(const TtsSpeaking('xin chào'), isNot(equals(const TtsSpeaking('tạm biệt'))));
     });
 
@@ -350,11 +350,11 @@ void main() {
     test('TtsPaused bằng nhau', () =>
         expect(const TtsPaused(), equals(const TtsPaused())));
 
-    test('TtsError với cùng thông điệp thì bằng nhau', () {
+    test('TtsError with identical message are equal', () {
       expect(const TtsError('oops'), equals(const TtsError('oops')));
     });
 
-    test('TtsError với thông điệp khác nhau thì không bằng nhau', () {
+    test('TtsError with different messages are not equal', () {
       expect(const TtsError('err1'), isNot(equals(const TtsError('err2'))));
     });
   });

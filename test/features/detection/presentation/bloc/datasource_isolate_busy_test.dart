@@ -81,16 +81,16 @@ void main() {
 
   // _isolateBusy is always reset after runInference
 
-  group('_isolateBusy được đặt lại trong finally', () {
+  group('_isolateBusy is reset in finally block', () {
     setUp(() async {
       await datasource.loadModel();
     });
 
-    test('isolateBusy là false trước lần suy luận đầu tiên', () {
+    test('isolateBusy is false before first inference', () {
       expect(datasource.isolateBusy, isFalse);
     });
 
-    test('isolateBusy được đặt lại sau khi suy luận thành công', () async {
+    test('isolateBusy is reset after successful inference', () async {
       datasource.resultFactory = () => [
         {
           'label': 'person', 'confidence': 0.85,
@@ -101,10 +101,10 @@ void main() {
       await datasource.runInference(mockImage, rotationDegrees: 0);
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'isolateBusy phải trở về false sau khi thành công');
+          reason: 'isolateBusy must return to false after success');
     });
 
-    test('isolateBusy được đặt lại sau khi suy luận ném exception', () async {
+    test('isolateBusy is reset after inference throws exception', () async {
       datasource.shouldThrow   = true;
       datasource.exceptionToThrow = Exception('GPU out of memory');
 
@@ -113,10 +113,10 @@ void main() {
       } catch (_) {}
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'isolateBusy phải trở về false ngay cả khi có exception');
+          reason: 'isolateBusy must return to false even if there\'s an exception');
     });
 
-    test('sau exception, lần suy luận tiếp theo vẫn chạy bình thường', () async {
+    test('after exception, subsequent inference runs normally', () async {
       datasource.shouldThrow = true;
       try {
         await datasource.runInference(mockImage, rotationDegrees: 0);
@@ -133,13 +133,13 @@ void main() {
       final results = await datasource.runInference(mockImage, rotationDegrees: 0);
 
       expect(results, isNotEmpty,
-          reason: 'Sau exception, lần suy luận kế tiếp vẫn phải chạy được. '
-              'Nếu isolateBusy không được đặt lại, kết quả sẽ luôn là [].');
+          reason: 'After exception, subsequent inference must still run. '
+              'If isolateBusy is not reset, the result is always [].');
       expect(results.first['label'], 'bicycle');
       expect(datasource.inferenceCallCount, equals(2));
     });
 
-    test('khi gọi đồng thời, lần thứ hai trả về [] nếu lần đầu còn đang chạy', () async {
+    test('concurrently called, second call returns [] if first is still running', () async {
       int callCount = 0;
       final ds = TrackingDatasource();
       await ds.loadModel();
@@ -155,7 +155,7 @@ void main() {
       expect(callCount, equals(2));
     });
 
-    test('closeModel đặt lại isolateBusy', () async {
+    test('closeModel resets isolateBusy', () async {
       datasource.shouldThrow = true;
       try {
         await datasource.runInference(mockImage, rotationDegrees: 0);
@@ -164,19 +164,19 @@ void main() {
       await datasource.closeModel();
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'closeModel() phải đặt lại isolateBusy');
+          reason: 'closeModel() must reset isolateBusy');
     });
   });
 
   // DetectionDatasource contract
 
-  group('Hợp đồng của DetectionDatasource', () {
-    test('runInference trả về [] trước khi loadModel được gọi', () async {
+  group('DetectionDatasource contract', () {
+    test('runInference returns [] before loadModel is called', () async {
       final result = await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty);
     });
 
-    test('sau khi loadModel thì runInference chạy bình thường', () async {
+    test('after loadModel, runInference executes normally', () async {
       await datasource.loadModel();
       datasource.resultFactory = () => [
         {
@@ -191,13 +191,13 @@ void main() {
       expect(result.first['label'], 'car');
     });
 
-    test('sau closeModel thì suy luận trả về []', () async {
+    test('after closeModel, inference returns []', () async {
       await datasource.loadModel();
       await datasource.closeModel();
 
       final result = await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty,
-          reason: 'Sau closeModel(), suy luận phải trả về [] vì model chưa được nạp');
+          reason: 'After closeModel(), inference must return [] since model is unloaded');
     });
   });
 }

@@ -59,7 +59,7 @@ void main() {
     });
 
     
-    test('gọi repository.detectFromFrame với ảnh đã truyền vào', () async {
+    test('calls repository.detectFromFrame with provided image', () async {
       when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async => []);
 
@@ -69,7 +69,7 @@ void main() {
     });
 
     
-    test('trả về danh sách DetectionObject từ repository', () async {
+    test('returns list of DetectionObject from repository', () async {
       final expected = [
         _makeDetection(label: 'person', confidence: 0.9),
         _makeDetection(label: 'bicycle', confidence: 0.7),
@@ -86,7 +86,7 @@ void main() {
     });
 
     
-    test('trả về danh sách rỗng khi không có vật thể nào được phát hiện', () async {
+    test('returns empty list when no objects are detected', () async {
       when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async => []);
 
@@ -96,7 +96,7 @@ void main() {
     });
 
     
-    test('truyền tiếp exception từ repository', () async {
+    test('rethrows exception from repository', () async {
       when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
           .thenThrow(Exception('Inference failed'));
 
@@ -104,7 +104,7 @@ void main() {
     });
 
     
-    test('mỗi lần gọi chỉ gọi repository đúng một lần', () async {
+    test('calls repository exactly once per call', () async {
       when(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async => []);
 
@@ -127,7 +127,7 @@ void main() {
     });
 
     
-    test('call(NoParams()) chuyển tiếp sang repository.loadModel()', () async {
+    test('call(NoParams()) forwards to repository.loadModel()', () async {
       when(() => mockRepository.loadModel()).thenAnswer((_) async {});
 
       await usecase.call(const NoParams());
@@ -136,7 +136,7 @@ void main() {
     });
 
     
-    test('call(NoParams()) thực sự gọi repository.loadModel()', () async {
+    test('call(NoParams()) actually calls repository.loadModel()', () async {
       when(() => mockRepository.loadModel()).thenAnswer((_) async {});
 
       await usecase.call(const NoParams());
@@ -145,7 +145,7 @@ void main() {
     });
 
     
-    test('call(NoParams()) truyền tiếp exception khi thất bại', () async {
+    test('call(NoParams()) rethrows exception on failure', () async {
       when(() => mockRepository.loadModel())
           .thenThrow(Exception('Model file not found'));
 
@@ -153,12 +153,12 @@ void main() {
     });
 
     
-    test('triển khai UseCase<void, NoParams>', () {
+    test('implements UseCase<void, NoParams>', () {
       expect(usecase, isA<UseCase<void, NoParams>>());
     });
 
     
-    test('không gọi detectFromFrame', () async {
+    test('does not call detectFromFrame', () async {
       when(() => mockRepository.loadModel()).thenAnswer((_) async {});
 
       await usecase.call(const NoParams());
@@ -172,7 +172,7 @@ void main() {
   
 
   group('DetectionObject', () {
-    test('voiceWarning chuyển nhãn sang tiếng Việt và ghép đủ vị trí, khoảng cách', () {
+    test('voiceWarning translates label to Vietnamese and concatenates position and distance', () {
       final obj = _makeDetection(
         label: 'person',
         left: 0.1, top: 0.1, width: 0.4, height: 0.4,
@@ -182,13 +182,13 @@ void main() {
       expect(obj.voiceWarning, contains('người đi bộ'));
     });
 
-    test('isDangerous là true khi diện tích > 0.10', () {
+    test('isDangerous is true when area > 0.10', () {
       
       final dangerous = _makeDetection(width: 0.4, height: 0.4);
       expect(dangerous.isDangerous, isTrue);
     });
 
-    test('isDangerous là false khi diện tích <= 0.10', () {
+    test('isDangerous is false when area <= 0.10', () {
       
       final safe = _makeDetection(width: 0.2, height: 0.4);
       expect(safe.isDangerous, isFalse);
@@ -226,19 +226,19 @@ void main() {
     });
 
     group('horizontalPosition', () {
-      test('trả về "bên trái" khi centerX < 0.33', () {
+      test('returns "bên trái" when centerX < 0.33', () {
         
         const box = BoundingBox(left: 0.0, top: 0.0, width: 0.2, height: 0.1);
         expect(box.horizontalPosition, 'bên trái');
       });
 
-      test('trả về "bên phải" khi centerX > 0.67', () {
+      test('returns "bên phải" when centerX > 0.67', () {
         
         const box = BoundingBox(left: 0.8, top: 0.0, width: 0.2, height: 0.1);
         expect(box.horizontalPosition, 'bên phải');
       });
 
-      test('trả về "phía trước" khi centerX nằm trong [0.33, 0.67]', () {
+      test('returns "phía trước" when centerX is in [0.33, 0.67]', () {
         
         const box = BoundingBox(left: 0.4, top: 0.0, width: 0.2, height: 0.1);
         expect(box.horizontalPosition, 'phía trước');
@@ -246,32 +246,32 @@ void main() {
     });
 
     group('proximityLabel', () {
-      test('trả về "rất gần" khi area > 0.25', () {
+      test('returns "rất gần" when area > 0.25', () {
         
         const box = BoundingBox(left: 0.0, top: 0.0, width: 0.6, height: 0.5);
         expect(box.proximityLabel, 'rất gần');
       });
 
-      test('trả về "gần" khi area nằm trong (0.10, 0.25]', () {
+      test('returns "gần" when area is in (0.10, 0.25]', () {
         
         const box = BoundingBox(left: 0.0, top: 0.0, width: 0.4, height: 0.4);
         expect(box.proximityLabel, 'gần');
       });
 
-      test('trả về "khoảng cách trung bình" khi area nằm trong (0.03, 0.10]', () {
+      test('returns "khoảng cách trung bình" when area is in (0.03, 0.10]', () {
         
         const box = BoundingBox(left: 0.0, top: 0.0, width: 0.2, height: 0.3);
         expect(box.proximityLabel, 'khoảng cách trung bình');
       });
 
-      test('trả về "xa" khi area <= 0.03', () {
+      test('returns "xa" when area <= 0.03', () {
         
         const box = BoundingBox(left: 0.0, top: 0.0, width: 0.1, height: 0.1);
         expect(box.proximityLabel, 'xa');
       });
     });
 
-    test('so sánh bằng dựa trên đủ bốn trường', () {
+    test('equality comparison relies on all four fields', () {
       const a = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
       const b = BoundingBox(left: 0.1, top: 0.2, width: 0.3, height: 0.4);
       const c = BoundingBox(left: 0.9, top: 0.2, width: 0.3, height: 0.4);

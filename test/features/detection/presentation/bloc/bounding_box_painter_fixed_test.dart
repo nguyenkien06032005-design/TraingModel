@@ -14,7 +14,7 @@ void main() {
   // dispose() and TextPainter memory management
 
   group('BoundingBoxPainter.dispose() xóa bộ nhớ đệm TextPainter', () {
-    testWidgets('dispose() chạy không crash và xóa đúng nhãn', (tester) async {
+    testWidgets('dispose() runs without crash and correctly clears labels', (tester) async {
       final painter = BoundingBoxPainter(
         boxes: [
           const SmoothedBox(
@@ -44,7 +44,7 @@ void main() {
           reason: 'dispose() phải xóa TextPainter cache mà không crash');
     });
 
-    testWidgets('dispose() với nhiều nhãn không để lại rò rỉ bộ nhớ', (tester) async {
+    testWidgets('dispose() with multiple labels does not leak memory', (tester) async {
       final boxes = List.generate(
         10,
         (i) => SmoothedBox(
@@ -70,7 +70,7 @@ void main() {
   // Paint objects do not share state between painters
 
   group('Paint theo từng instance — không dùng chung mutable state', () {
-    testWidgets('khung hình kế tiếp với nhãn khác không bị ảnh hưởng màu sắc', (tester) async {
+    testWidgets('subsequent frame with different label does not affect color', (tester) async {
       final boxes1 = [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
@@ -98,7 +98,7 @@ void main() {
           child: CustomPaint(painter: painter2)))),
       );
       expect(tester.takeException(), isNull,
-          reason: 'Khung hình 2 không bị ảnh hưởng bởi trạng thái Paint của khung hình 1');
+          reason: 'Frame 2 is not affected by Paint state of frame 1');
     });
 
     testWidgets('missedFrames opacity áp dụng độc lập cho từng box', (tester) async {
@@ -125,7 +125,7 @@ void main() {
   // shouldRepaint uses an O(1) version counter
 
   group('shouldRepaint dùng bộ đếm version O(1)', () {
-    test('cùng version → không vẽ lại', () {
+    test('same version -> does not repaint', () {
       final boxes = [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
@@ -161,7 +161,7 @@ void main() {
       expect(painter1.shouldRepaint(painter2), isTrue);
     });
 
-    test('cùng version và cùng mirror → không vẽ lại', () {
+    test('same version and mirror flag -> does not repaint', () {
       final painter1 = BoundingBoxPainter(
           boxes: const [], mirrorHorizontal: false, version: 3);
       final painter2 = BoundingBoxPainter(
@@ -191,7 +191,7 @@ void main() {
       expect(tracker.version, equals(0));
     });
 
-    test('version tăng sau mỗi lần update', () {
+    test('version increments after each update', () {
       final tracker = BoxTracker();
       tracker.update([makeDetection()]);
       expect(tracker.version, equals(1));
@@ -216,7 +216,7 @@ void main() {
   // Painter regression
 
   group('Kiểm thử hồi quy của BoundingBoxPainter', () {
-    testWidgets('vẽ không lỗi khi danh sách rỗng', (tester) async {
+    testWidgets('paints without error on empty list', (tester) async {
       final painter = BoundingBoxPainter(boxes: const [], version: 0);
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: SizedBox.expand(
@@ -225,7 +225,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('lật mirrorHorizontal không crash', (tester) async {
+    testWidgets('toggling mirrorHorizontal does not crash', (tester) async {
       final painter = BoundingBoxPainter(
         boxes: const [
           SmoothedBox(
@@ -243,7 +243,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('box ngoài biên được chặn trong phạm vi mà không crash', (tester) async {
+    testWidgets('out of bounds box is clamped without crashing', (tester) async {
       final painter = BoundingBoxPainter(
         boxes: const [
           SmoothedBox(

@@ -289,7 +289,7 @@ void main() {
   // onDone callback
 
   group('Callback onDone', () {
-    test('được gọi sau khi suy luận thành công', () async {
+    test('is called after successful inference', () async {
       when(() => mockDetectFromFrame(any(),
               rotationDegrees: any(named: 'rotationDegrees')))
           .thenAnswer((_) async => []);
