@@ -7,9 +7,16 @@ import '../../../tts/domain/usecases/stop_speaking_usecase.dart';
 import 'settings_event.dart';
 import 'settings_state.dart';
 
-/// FIX SV-006: _onLanguage sekarang truyền speechRate hiện tại khi configure TTS.
-/// Trước đây: _configureTts(language: e.lang) → speechRate bị reset về default
-/// Sau: _configureTts(language: e.lang, speechRate: state.speechRate) → giữ rate
+/// Manages user settings and propagates them to dependent subsystems.
+///
+/// Whenever a setting changes, this BLoC is responsible for:
+/// - Saving it through [SettingsRepository].
+/// - Updating [DetectionConfig] when inference behavior is affected.
+/// - Calling [ConfigureTtsUsecase] to refresh the FlutterTts engine.
+///
+/// Important invariant: when the TTS language changes, the current
+/// [speechRate] must also be passed into [ConfigureTtsUsecase] so the engine
+/// does not reset to its default speed.
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository  _repository;
   final ConfigureTtsUsecase _configureTts;
@@ -35,6 +42,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     emit(state.copyWith(isLoading: true));
+
     final speechRate   = await _repository.getSpeechRate();
     final confThresh   = await _repository.getConfidenceThreshold();
     final voiceEnabled = await _repository.getVoiceEnabled();
@@ -59,6 +67,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setSpeechRate(e.rate);
+    // Pass the current language together with the new rate so the engine
+    // does not reset to its defaults.
     await _configureTts(speechRate: e.rate, language: state.ttsLanguage);
     emit(state.copyWith(speechRate: e.rate));
   }
@@ -68,6 +78,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setConfidenceThreshold(e.threshold);
+    // Update DetectionConfig immediately so the next inference frame uses the
+    // new threshold without restarting the model.
     _detectionConfig.setConfidenceThreshold(e.threshold);
     emit(state.copyWith(confidenceThreshold: e.threshold));
   }
@@ -89,9 +101,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     emit(state.copyWith(showConfidencePanel: e.show));
   }
 
-  /// FIX SV-006: Truyền speechRate hiện tại khi đổi language
-  /// Trước: _configureTts(language: e.lang) → TTS speechRate bị reset về default
-  /// Sau:   _configureTts(language: e.lang, speechRate: state.speechRate)
+  /// Changes the TTS language while preserving the current [speechRate].
+  /// [ConfigureTtsUsecase] must reinitialize the engine with both values,
+  /// otherwise it may fall back to the default rate.
   Future<void> _onLanguage(
     SettingsTtsLanguageChanged e,
     Emitter<SettingsState> emit,
@@ -99,7 +111,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     await _repository.setTtsLanguage(e.lang);
     await _configureTts(
       language:   e.lang,
-      speechRate: state.speechRate, // ← FIX: giữ nguyên rate hiện tại
+      speechRate: state.speechRate,
     );
     emit(state.copyWith(ttsLanguage: e.lang));
   }

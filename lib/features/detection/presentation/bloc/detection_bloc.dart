@@ -4,34 +4,46 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/detection_object.dart';
+import '../../../../core/usecases/usecase.dart';
 import '../../domain/usecases/load_model_usecase.dart';
 import '../../domain/usecases/close_model_usecase.dart';
 import '../../domain/usecases/detection_object_from_frame.dart';
 import 'detection_event.dart';
 import 'detection_state.dart';
 
+/// Callback injected from the outside so this BLoC stays decoupled from
+/// [TtsBloc]. Communication happens through the callback rather than by
+/// holding a direct reference.
 typedef DetectionWarningCallback = void Function({
   required String text,
   required bool immediate,
   required bool withVibration,
 });
 
-/// FIX SV-007: Bỏ dependency trực tiếp vào DetectionRepository.
-///             Dùng CloseModelUsecase thay vì _repository.closeModel().
+/// Coordinates the detection lifecycle: loading the model, processing camera
+/// frames, emitting TTS warnings, and tracking approaching motion.
 ///
-/// FIX SV-009: Dùng droppable() transformer từ bloc_concurrency
-///             thay vì manual _isProcessingFrame guard.
-///             droppable() tự động drop event mới nếu handler đang chạy —
-///             đây chính xác là behavior ta muốn cho frame processing.
+/// Frame locking is handled entirely by [CameraService] through
+/// [DetectionFrameReceived.onDone]. This BLoC does not guard concurrent frames
+/// on its own, so [onDone] must always be called from a `finally` block.
+///
+/// Warnings are emitted when:
+/// - An object appears continuously for at least 3 frames.
+/// - The bounding-box area grows by more than 30% compared to the previous
+///   frame, which signals an approaching object.
 class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   final LoadModelUsecase         _loadModel;
-  final CloseModelUsecase        _closeModel;   // ← FIX SV-007: UseCase, không phải Repository
+  final CloseModelUsecase        _closeModel;
   final DetectionObjectFromFrame _detectFromFrame;
   final DetectionWarningCallback _onWarning;
 
-  // Tracking objects để phát hiện approaching motion
+  /// Stores previous-frame bounding-box areas by label so approaching objects
+  /// can be detected from fast area growth.
   Map<String, List<double>> _previousObjects = {};
-  Map<String, int> _consecutiveFrames = {}; // ✅ FIX: Debounce bộ đếm frame
+
+  /// Counts consecutive frames for each object instance.
+  /// Used to debounce warnings so they trigger only after 3 stable frames.
+  Map<String, int> _consecutiveFrames = {};
 
   DetectionBloc({
     required LoadModelUsecase         loadModel,
@@ -45,26 +57,19 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         super(const DetectionInitial()) {
     on<DetectionStarted>(_onStarted);
     on<DetectionStopped>(_onStopped);
-
-    // ✅ FIX SV-013: GỠ BỎ droppable() gây SILENT DEADLOCK.
-    // CameraService đã hoàn toàn chịu trách nhiệm stream locking. 
-    // Nếu dùng droppable() thì BLoC sẽ triệt tiêu Event, làm mất callback onDone(),
-    // từ đó khóa cứng CameraService vĩnh viễn.
-    on<DetectionFrameReceived>(
-      _onFrameReceived,
-    );
+    on<DetectionFrameReceived>(_onFrameReceived);
   }
 
   Future<void> _onStarted(
     DetectionStarted event,
     Emitter<DetectionState> emit,
   ) async {
-    _previousObjects = {};
+    _previousObjects   = {};
     _consecutiveFrames = {};
     if (kDebugMode) debugPrint('[DetectionBloc] loading model...');
     emit(const DetectionLoading());
     try {
-      await _loadModel.load();
+      await _loadModel.call(const NoParams());
       if (kDebugMode) debugPrint('[DetectionBloc] model loaded');
       emit(const DetectionModelReady());
     } catch (e) {
@@ -77,16 +82,17 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     _previousObjects.clear();
     _consecutiveFrames.clear();
     emit(const DetectionInitial());
-    // ✅ FIX SV-007: Gọi qua UseCase, không gọi _repository trực tiếp
-    unawaited(_closeModel.close());
+    // Release the isolate interpreter as fire-and-forget because the BLoC has
+    // already transitioned back to the initial state.
+    unawaited(_closeModel.call(const NoParams()));
   }
 
   Future<void> _onFrameReceived(
     DetectionFrameReceived event,
     Emitter<DetectionState> emit,
   ) async {
-    // droppable() đã handle việc skip frames concurrent
-    // Không cần manual _isProcessingFrame guard nữa
+    // [event.onDone] must be called in finally so CameraService can release
+    // the frame lock and accept the next frame.
     try {
       final detections = await _detectFromFrame(
         event.image,
@@ -120,6 +126,13 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     }
   }
 
+  /// Decides whether a TTS warning should be emitted based on two criteria:
+  /// 1. A newly seen object stays stable for at least 3 consecutive frames.
+  /// 2. An existing object appears to be approaching because its area grows by
+  ///    more than 30% compared with the previous frame.
+  ///
+  /// Dangerous objects are spoken immediately with vibration, while normal
+  /// objects are queued through TTS.
   void _triggerWarningIfNeeded(List<DetectionObject> detections) {
     final currentObjects = _groupAreasByLabel(detections);
     final sortedDetections = [...detections]
@@ -129,7 +142,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         return b.boundingBox.area.compareTo(a.boundingBox.area);
       });
 
-    final candidates = <DetectionObject>[];
+    final candidates    = <DetectionObject>[];
     final currentIndices = <String, int>{};
     final newConsecutive = <String, int>{};
 
@@ -137,10 +150,10 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
       final currentIndex = currentIndices.update(
         d.label, (value) => value + 1, ifAbsent: () => 0,
       );
-      
-      final presenceKey = '${d.label}_$currentIndex';
-      final prevCount = _consecutiveFrames[presenceKey] ?? 0;
-      final currentCount = prevCount + 1;
+
+      final presenceKey   = '${d.label}_$currentIndex';
+      final prevCount     = _consecutiveFrames[presenceKey] ?? 0;
+      final currentCount  = prevCount + 1;
       newConsecutive[presenceKey] = currentCount;
 
       final previousAreas = _previousObjects[d.label];
@@ -148,14 +161,13 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
           ? previousAreas[currentIndex]
           : null;
 
-      // ✅ FIX: Debounce vật thể mới 3 frame, Cảnh báo tức thì nếu area > 30%
-      if (oldArea != null && d.boundingBox.area > oldArea * 1.3) {
-        candidates.add(d);
-      } else if (currentCount == 3) {
-        candidates.add(d);
-      }
+      final isApproaching = oldArea != null && d.boundingBox.area > oldArea * 1.3;
+      final isStable      = currentCount == 3;
+
+      if (isApproaching || isStable) candidates.add(d);
     }
-    _previousObjects = currentObjects;
+
+    _previousObjects   = currentObjects;
     _consecutiveFrames = newConsecutive;
 
     if (candidates.isEmpty) return;
@@ -165,8 +177,8 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
 
     if (dangerous.isNotEmpty) {
       _onWarning(
-        text: dangerous.first.voiceWarning,
-        immediate: true,
+        text:          dangerous.first.voiceWarning,
+        immediate:     true,
         withVibration: true,
       );
     } else {
@@ -174,13 +186,16 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         (a, b) => a.confidence > b.confidence ? a : b,
       );
       _onWarning(
-        text: top.voiceWarning,
-        immediate: false,
+        text:          top.voiceWarning,
+        immediate:     false,
         withVibration: false,
       );
     }
   }
 
+  /// Groups bounding-box areas by label and sorts them in descending order.
+  /// This makes it possible to compare the current frame against the previous
+  /// one to detect approaching motion.
   Map<String, List<double>> _groupAreasByLabel(
     List<DetectionObject> detections,
   ) {

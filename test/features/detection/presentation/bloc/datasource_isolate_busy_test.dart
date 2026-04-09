@@ -4,27 +4,25 @@ import 'package:camera/camera.dart';
 
 import 'package:safe_vision_app/features/detection/data/datasources/detection_local_datasource.dart';
 
-// ── Test strategy cho SV-002 ─────────────────────────────────────────────────
+// Test strategy
 //
-// Bug: _isolateBusy không được reset khi exception xảy ra trong runInference()
-// Fix: Thêm _isolateBusy = false; vào finally block
+// DetectionLocalDatasourceImpl depends on the native TFLite interpreter.
+// In a unit-test environment there is no native engine, so the isolate
+// cannot be spawned. Because of that, `_isolateBusy` is verified through
+// TrackingDatasource, a test double that mirrors the same finally-block logic.
 //
-// Để test behavior này mà không cần TFLite interpreter thật,
-// ta mock DetectionLocalDatasource và test thông qua repository layer.
-// Test thực sự của isolateBusy cần integration test on-device.
-//
-// Phần test này verify:
-// 1. Repository delegate đúng cách
-// 2. Exception propagation behavior
-// 3. Concurrent call handling (simulated)
-// ─────────────────────────────────────────────────────────────────────────────
+// A device integration test is still required for full validation of
+// GPU delegates, isolate spawning, and model loading.
+// ─────────────────────────────────────────────────────────────────────────
 
 class MockDetectionDatasource extends Mock
     implements DetectionLocalDatasource {}
 
 class MockCameraImage extends Mock implements CameraImage {}
 
-/// Test double để verify isolateBusy fix behavior
+/// Test double that mirrors the finally-block pattern from the real
+/// implementation. It verifies that `_isolateBusy` is always reset,
+/// including when inference throws.
 class TrackingDatasource implements DetectionLocalDatasource {
   bool _modelLoaded = false;
   bool _isolateBusy = false;
@@ -59,7 +57,8 @@ class TrackingDatasource implements DetectionLocalDatasource {
     } catch (e) {
       rethrow;
     } finally {
-      // ✅ FIX SV-002: selalu reset dalam finally
+      // The finally block guarantees that `_isolateBusy` is reset on both
+      // success and exception paths.
       _isolateBusy = false;
     }
   }
@@ -73,99 +72,90 @@ class TrackingDatasource implements DetectionLocalDatasource {
 
 void main() {
   late TrackingDatasource datasource;
-  late MockCameraImage mockImage;
+  late MockCameraImage    mockImage;
 
   setUp(() {
     datasource = TrackingDatasource();
-    mockImage = MockCameraImage();
+    mockImage  = MockCameraImage();
   });
 
-  // ─── SV-002: isolateBusy reset ──────────────────────────────────────────
+  // _isolateBusy is always reset after runInference
 
-  group('SV-002: _isolateBusy always reset after runInference', () {
+  group('_isolateBusy is reset in the finally block', () {
     setUp(() async {
       await datasource.loadModel();
     });
 
-    test('isolateBusy is false before first inference', () {
+    test('isolateBusy false sebelum inference pertama', () {
       expect(datasource.isolateBusy, isFalse);
     });
 
-    test('isolateBusy resets to false after SUCCESSFUL inference', () async {
+    test('isolateBusy direset setelah inference SUKSES', () async {
       datasource.resultFactory = () => [
-        {'label': 'person', 'confidence': 0.85,
-         'left': 0.1, 'top': 0.1, 'width': 0.3, 'height': 0.4}
+        {
+          'label': 'person', 'confidence': 0.85,
+          'left': 0.1, 'top': 0.1, 'width': 0.3, 'height': 0.4,
+        }
       ];
 
       await datasource.runInference(mockImage, rotationDegrees: 0);
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'FIX SV-002: isolateBusy phải reset về false sau khi success');
+          reason: 'isolateBusy harus false setelah sukses');
     });
 
-    test('isolateBusy resets to false after EXCEPTION in inference', () async {
-      datasource.shouldThrow = true;
+    test('isolateBusy direset setelah EXCEPTION dalam inference', () async {
+      datasource.shouldThrow   = true;
       datasource.exceptionToThrow = Exception('GPU out of memory');
 
       try {
         await datasource.runInference(mockImage, rotationDegrees: 0);
-      } catch (_) {
-        // Exception expected
-      }
+      } catch (_) {}
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'FIX SV-002: isolateBusy phải reset về false dù có exception');
+          reason: 'isolateBusy harus false meskipun ada exception');
     });
 
-    test('after exception, subsequent inference calls succeed (no frozen state)', () async {
-      // Lần 1: exception
+    test('setelah exception, inference berikutnya berjalan normal (tidak frozen)', () async {
       datasource.shouldThrow = true;
       try {
         await datasource.runInference(mockImage, rotationDegrees: 0);
       } catch (_) {}
 
-      // Reset: không còn throw
       datasource.shouldThrow = false;
       datasource.resultFactory = () => [
-        {'label': 'bicycle', 'confidence': 0.7,
-         'left': 0.2, 'top': 0.2, 'width': 0.2, 'height': 0.3}
+        {
+          'label': 'bicycle', 'confidence': 0.7,
+          'left': 0.2, 'top': 0.2, 'width': 0.2, 'height': 0.3,
+        }
       ];
 
-      // Lần 2: phải chạy bình thường (không bị frozen)
       final results = await datasource.runInference(mockImage, rotationDegrees: 0);
 
       expect(results, isNotEmpty,
-          reason: 'FIX SV-002: sau exception, inference tiếp theo phải chạy được. '
-              'Nếu isolateBusy không reset, kết quả sẽ luôn là []');
+          reason: 'Setelah exception, inference berikutnya harus berjalan. '
+              'Jika isolateBusy tidak direset, hasil akan selalu []');
       expect(results.first['label'], 'bicycle');
       expect(datasource.inferenceCallCount, equals(2));
     });
 
-    test('concurrent calls: second call returns [] while first is running', () async {
-      // Simulated: isBusy=true khi đang chạy
-      // Trong implementation thực, second call được guard bởi _isolateBusy
-      // Ở đây test rằng guard hoạt động đúng với count
-
+    test('panggilan concurrent: yang kedua mengembalikan [] saat yang pertama berjalan', () async {
       int callCount = 0;
-      final trackingDatasource = TrackingDatasource();
-      await trackingDatasource.loadModel();
-      trackingDatasource.resultFactory = () {
+      final ds = TrackingDatasource();
+      await ds.loadModel();
+      ds.resultFactory = () {
         callCount++;
         return [];
       };
 
-      // Call 1: normal
-      await trackingDatasource.runInference(mockImage, rotationDegrees: 0);
-
-      // Verify: sau lần 1, busy=false → lần 2 được accept
-      expect(trackingDatasource.isolateBusy, isFalse);
-      await trackingDatasource.runInference(mockImage, rotationDegrees: 0);
+      await ds.runInference(mockImage, rotationDegrees: 0);
+      expect(ds.isolateBusy, isFalse);
+      await ds.runInference(mockImage, rotationDegrees: 0);
 
       expect(callCount, equals(2));
     });
 
-    test('closeModel resets isolateBusy', () async {
-      // Simulate stuck state (edge case)
+    test('closeModel mereset isolateBusy', () async {
       datasource.shouldThrow = true;
       try {
         await datasource.runInference(mockImage, rotationDegrees: 0);
@@ -174,24 +164,25 @@ void main() {
       await datasource.closeModel();
 
       expect(datasource.isolateBusy, isFalse,
-          reason: 'closeModel() luôn phải reset isolateBusy');
+          reason: 'closeModel() harus mereset isolateBusy');
     });
   });
 
-  // ─── Datasource contract ─────────────────────────────────────────────────
+  // DetectionDatasource contract
 
-  group('DetectionDatasource contract tests', () {
-    test('runInference returns [] before loadModel', () async {
-      // _modelLoaded = false
+  group('DetectionDatasource contract', () {
+    test('runInference mengembalikan [] sebelum loadModel dipanggil', () async {
       final result = await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty);
     });
 
-    test('loadModel then runInference works', () async {
+    test('loadModel kemudian runInference berjalan normal', () async {
       await datasource.loadModel();
       datasource.resultFactory = () => [
-        {'label': 'car', 'confidence': 0.9,
-         'left': 0.0, 'top': 0.0, 'width': 0.5, 'height': 0.5}
+        {
+          'label': 'car', 'confidence': 0.9,
+          'left': 0.0, 'top': 0.0, 'width': 0.5, 'height': 0.5,
+        }
       ];
 
       final result = await datasource.runInference(mockImage, rotationDegrees: 90);
@@ -200,13 +191,13 @@ void main() {
       expect(result.first['label'], 'car');
     });
 
-    test('closeModel prevents further inference', () async {
+    test('setelah closeModel, inference mengembalikan []', () async {
       await datasource.loadModel();
       await datasource.closeModel();
 
       final result = await datasource.runInference(mockImage, rotationDegrees: 0);
       expect(result, isEmpty,
-          reason: 'Sau closeModel(), inference phải return [] (model not loaded)');
+          reason: 'Setelah closeModel(), inference harus return [] (model not loaded)');
     });
   });
 }

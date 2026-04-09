@@ -7,10 +7,10 @@ main          ← production releases (tag: v1.x.x)
   ↑
 develop       ← integration branch, always deployable to staging
   ↑
-feature/*     ← new features (branches from develop)
-fix/*         ← bug fixes (branches from develop)
-hotfix/*      ← urgent prod fixes (branches from main)
-release/*     ← release preparation (branches from develop)
+feature/*     ← new features (branched from develop)
+fix/*         ← bug fixes (branched from develop)
+hotfix/*      ← urgent production fixes (branched from main)
+release/*     ← release preparation (branched from develop)
 ```
 
 ## Branch Naming Convention
@@ -36,47 +36,53 @@ release/v1.1.0
 Format: `type(scope): description`
 
 ### Types
-| Type     | Khi nào dùng |
-|----------|--------------|
-| `feat`   | Tính năng mới |
-| `fix`    | Bug fix |
-| `perf`   | Performance improvement |
-| `refactor` | Code refactor (không thay đổi behavior) |
-| `test`   | Thêm / sửa tests |
-| `docs`   | Documentation |
-| `chore`  | Build, CI, dependency updates |
-| `style`  | Format, whitespace (không thay đổi logic) |
+
+| Type       | When to use |
+|------------|-------------|
+| `feat`     | New feature |
+| `fix`      | Bug fix |
+| `perf`     | Performance improvement |
+| `refactor` | Refactor with no behaviour change |
+| `test`     | Add or update tests |
+| `docs`     | Documentation only |
+| `chore`    | Build system, CI, dependency updates |
+| `style`    | Formatting, whitespace (no logic change) |
 
 ### Scopes
+
 `tts` | `detection` | `camera` | `settings` | `ui` | `di` | `ci` | `model`
 
-### Examples
+### Example commit messages
+
 ```
-fix(tts): remove double _enqueue() call in speakWarning (SV-001)
+fix(tts): remove double enqueue in speakWarning (SV-001)
 fix(detection): reset _isolateBusy in finally block (SV-002)
-fix(detection): add CloseModelUsecase for clean architecture (SV-007)
-feat(detection): use droppable() transformer for frame processing (SV-009)
-perf(ui): add version counter to BoundingBoxPainter.shouldRepaint (SV-011)
-test(tts): add unit tests for speakWarning cooldown logic
-chore(ci): add GitHub Actions CI pipeline
-fix(settings): pass speechRate when changing TTS language (SV-006)
+fix(detection): add CloseModelUsecase per clean architecture (SV-007)
+feat(detection): use frame locking via onDone callback (SV-009)
+perf(ui): use version counter in BoundingBoxPainter.shouldRepaint (SV-011)
+test(tts): add unit tests for cooldown logic in speakWarning
+chore(ci): switch Flutter pin to stable channel
+fix(settings): forward speechRate when changing TTS language (SV-006)
 ```
 
 ### Breaking Changes
+
+Add `!` after the scope and include a `BREAKING CHANGE` section in the body:
+
 ```
 feat(detection)!: replace DetectionRepository injection with CloseModelUsecase
 
-BREAKING CHANGE: DetectionBloc constructor no longer accepts repository parameter.
+BREAKING CHANGE: DetectionBloc constructor no longer accepts a repository parameter.
 Use closeModel: CloseModelUsecase instead.
 ```
 
 ## PR Checklist
 
-Copy vào PR description:
+Copy into the PR description:
 
 ```markdown
 ## Description
-<!-- Mô tả ngắn gọn thay đổi này làm gì -->
+<!-- Briefly describe what was changed -->
 
 Closes #XXX
 
@@ -96,29 +102,29 @@ Closes #XXX
 
 ## Code Quality
 - [ ] `flutter analyze` passes with no issues
-- [ ] `dart format` applied
+- [ ] `dart format` has been applied
 - [ ] No hardcoded strings (use constants)
-- [ ] No `print()` statements (use `debugPrint()` with kDebugMode guard)
+- [ ] No `print()` calls (use `debugPrint()` guarded by `kDebugMode`)
 
 ## Review Notes
-<!-- Điểm cần reviewer chú ý đặc biệt -->
+<!-- Points that need special attention from the reviewer -->
 ```
 
 ## Local Development Setup
 
 ```bash
-# Clone và setup
+# Clone and set up
 git clone https://github.com/your-org/safe_vision_app.git
 cd safe_vision_app
 flutter pub get
 
-# Chạy tests
+# Run all tests
 flutter test
 
-# Chạy specific test file
+# Run a specific test file
 flutter test test/features/tts/tts_service_fix_test.dart
 
-# Chạy tests với coverage
+# Run tests with a coverage report
 flutter test --coverage
 genhtml coverage/lcov.info -o coverage/html
 open coverage/html/index.html
@@ -130,18 +136,51 @@ dart format lib/ test/
 flutter analyze --fatal-infos
 ```
 
+### Simulating CI locally with Docker
+
+```bash
+# Analyze
+docker compose -f infra/docker/docker-compose.yml run analyze
+
+# Full test suite
+docker compose -f infra/docker/docker-compose.yml run test
+
+# Specific test file
+docker compose -f infra/docker/docker-compose.yml run test-file \
+  test/features/tts/tts_service_fix_test.dart
+
+# Build debug APK
+docker compose -f infra/docker/docker-compose.yml run build-android
+```
+
 ## Semantic Versioning
 
 ```
 v{MAJOR}.{MINOR}.{PATCH}+{BUILD}
 
-MAJOR: Breaking API changes
-MINOR: New features (backward compatible)
-PATCH: Bug fixes
-BUILD: Auto-incremented by CI
+MAJOR : Breaking API changes
+MINOR : New features (backward compatible)
+PATCH : Bug fixes
+BUILD : Auto-incremented by CI
 ```
 
-Ví dụ: `1.2.3+47` trong `pubspec.yaml`:
+Example in `pubspec.yaml`:
 ```yaml
 version: 1.2.3+47
 ```
+
+## CI/CD Overview
+
+The pipeline runs automatically on every push and PR:
+
+```
+push/PR
+  └─► analyze (lint + format)
+        └─► test (unit + widget, coverage ≥ 80%)
+              ├─► build-android (debug + release)
+              └─► build-ios (no-codesign)
+                    └─► release (main only, after all jobs pass)
+```
+
+A Slack notification is sent to `#safevision-alerts` whenever a job fails.
+Full configuration is in `.github/workflows/ci.yml`.

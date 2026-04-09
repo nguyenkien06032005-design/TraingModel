@@ -14,25 +14,23 @@ on:
         type: choice
         options: [staging, production]
 
-# Cancel in-progress runs on same branch (saves CI minutes)
+# Cancel in-progress runs on the same branch to save CI minutes
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.32.0'
+  # Use channel: stable instead of pinning a specific version to avoid build
+  # failures when that version is unavailable on the runner. If pinning is
+  # required, check https://docs.flutter.dev/release/archive first.
+  FLUTTER_CHANNEL: stable
   JAVA_VERSION: '17'
-  RUBY_VERSION: '3.2'
-
-# ─────────────────────────────────────────────────────────────────────────────
-# JOBS
-# ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
 
   # ── 1. CODE QUALITY ────────────────────────────────────────────────────────
   analyze:
-    name: 🔍 Analyze & Lint
+    name: Analyze & Lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,8 +39,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache pub dependencies
@@ -68,7 +65,7 @@ jobs:
 
   # ── 2. UNIT & WIDGET TESTS ────────────────────────────────────────────────
   test:
-    name: 🧪 Tests (unit + widget)
+    name: Tests (unit + widget)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: analyze
@@ -78,8 +75,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache pub dependencies
@@ -106,14 +102,13 @@ jobs:
         run: |
           sudo apt-get install -y lcov
           lcov --summary coverage/lcov.info 2>&1 | tee coverage_summary.txt
-          # Extract line coverage percentage
           COVERAGE=$(lcov --summary coverage/lcov.info 2>&1 | grep "lines" | grep -oP '\d+\.\d+(?=%)' | head -1)
           echo "Coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% below minimum threshold of 80%"
+            echo "Coverage ${COVERAGE}% is below the 80% minimum threshold"
             exit 1
           fi
-          echo "✅ Coverage ${COVERAGE}% meets minimum threshold of 80%"
+          echo "Coverage ${COVERAGE}% meets the threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -133,7 +128,7 @@ jobs:
 
   # ── 3. BUILD ANDROID ──────────────────────────────────────────────────────
   build-android:
-    name: 🤖 Build Android
+    name: Build Android
     runs-on: ubuntu-latest
     timeout-minutes: 40
     needs: test
@@ -152,8 +147,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache Gradle
@@ -174,17 +168,16 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Restore keystore for release builds
       - name: Restore keystore
         if: matrix.build-type == 'release'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/keystore.jks
-          echo "storeFile=keystore.jks" > android/key.properties
+          echo "storeFile=keystore.jks"                              > android/key.properties
           echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"          >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"    >> android/key.properties
 
       - name: Build APK (debug)
         if: matrix.build-type == 'debug'
@@ -194,7 +187,7 @@ jobs:
         if: matrix.build-type == 'release'
         run: flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/debug-info
 
-      - name: Build App Bundle (release only)
+      - name: Build App Bundle (release)
         if: matrix.build-type == 'release'
         run: flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info
 
@@ -207,10 +200,10 @@ jobs:
             build/app/outputs/bundle/**/*.aab
           retention-days: 7
 
-  # ── 4. BUILD iOS ─────────────────────────────────────────────────────────
+  # ── 4. BUILD iOS ──────────────────────────────────────────────────────────
   build-ios:
-    name: 🍎 Build iOS
-    runs-on: macos-14  # Apple Silicon runner
+    name: Build iOS
+    runs-on: macos-14
     timeout-minutes: 50
     needs: test
     steps:
@@ -219,8 +212,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache CocoaPods
@@ -253,7 +245,7 @@ jobs:
 
   # ── 5. SECURITY SCAN ──────────────────────────────────────────────────────
   security:
-    name: 🔐 Security Audit
+    name: Security Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: analyze
@@ -263,8 +255,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Install dependencies
@@ -283,7 +274,7 @@ jobs:
 
   # ── 6. RELEASE (main branch only) ─────────────────────────────────────────
   release:
-    name: 🚀 Release
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-android, build-ios, security]
@@ -291,7 +282,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed for changelog generation
+          fetch-depth: 0
 
       - name: Download Android release artifact
         uses: actions/download-artifact@v4
@@ -310,7 +301,7 @@ jobs:
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION"    >> $GITHUB_OUTPUT
 
       - name: Generate changelog
         id: changelog
@@ -324,10 +315,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: SafeVision ${{ steps.version.outputs.version }}
+          tag_name:  ${{ steps.version.outputs.tag }}
+          name:      SafeVision ${{ steps.version.outputs.version }}
           body_path: CHANGELOG_LATEST.md
-          draft: false
+          draft:     false
           prerelease: false
           files: |
             dist/android/**/*.apk
@@ -337,7 +328,7 @@ jobs:
 
   # ── 7. NOTIFY ─────────────────────────────────────────────────────────────
   notify:
-    name: 📣 Notify
+    name: Notify
     runs-on: ubuntu-latest
     needs: [test, build-android, build-ios]
     if: always()
@@ -349,13 +340,13 @@ jobs:
           channel-id: 'C_SAFEVISION_ALERTS'
           payload: |
             {
-              "text": "❌ SafeVision CI failed on `${{ github.ref_name }}`",
+              "text": "SafeVision CI failed on `${{ github.ref_name }}`",
               "attachments": [{
                 "color": "danger",
                 "fields": [
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
-                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
-                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                  { "title": "Commit", "value": "${{ github.sha }}",      "short": true },
+                  { "title": "Run",    "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
               }]
             }

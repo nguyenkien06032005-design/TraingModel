@@ -8,21 +8,30 @@ import '../../domain/usecases/pause_speaking_usecase.dart';
 import 'tts_event.dart';
 import 'tts_state.dart';
 
+/// Manages TTS state and bridges [DetectionBloc] events to
+/// [SpeakWarningUsecase].
+///
+/// Before processing each [TtsSpeak], the BLoC checks
+/// [SettingsRepository.getVoiceEnabled] so user preferences are respected
+/// without needing to restart the BLoC.
+///
+/// Vibration ([Vibration.vibrate]) is triggered only if TTS is actually
+/// accepted after the cooldown check, not on every incoming event.
 class TtsBloc extends Bloc<TtsEvent, TtsState> {
   final SpeakWarningUsecase  _speakWarning;
   final StopSpeakingUsecase  _stopSpeaking;
-  final PauseSpeakingUsecase _pauseSpeaking; 
+  final PauseSpeakingUsecase _pauseSpeaking;
   final SettingsRepository   _settingsRepository;
 
   TtsBloc({
     required SpeakWarningUsecase  speakWarning,
     required StopSpeakingUsecase  stopSpeaking,
     required PauseSpeakingUsecase pauseSpeaking,
-    required SettingsRepository settingsRepository,
-  })  : _speakWarning  = speakWarning,
-        _stopSpeaking  = stopSpeaking,
-        _pauseSpeaking = pauseSpeaking,
-        _settingsRepository = settingsRepository,
+    required SettingsRepository   settingsRepository,
+  })  : _speakWarning        = speakWarning,
+        _stopSpeaking        = stopSpeaking,
+        _pauseSpeaking       = pauseSpeaking,
+        _settingsRepository  = settingsRepository,
         super(const TtsInitial()) {
     on<TtsSpeak>(_onSpeak);
     on<TtsStop>(_onStop);
@@ -33,6 +42,7 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
     try {
       final voiceEnabled = await _settingsRepository.getVoiceEnabled();
       if (!voiceEnabled) {
+        // Stop any active audio if voice has just been disabled.
         if (state is TtsSpeaking) {
           await _stopSpeaking();
           emit(const TtsStopped());
@@ -40,15 +50,13 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
         return;
       }
 
-      bool accepted = false;
-      if (event.immediate) {
-        accepted = await _speakWarning.immediate(event.text);
-      } else {
-        accepted = await _speakWarning(event.text);
-      }
+      final bool accepted = event.immediate
+          ? await _speakWarning.immediate(event.text)
+          : await _speakWarning(event.text);
 
-      // ✅ FIX SV-014: Gỡ Rung Ảo.
-      // Chỉ kích hoạt motor rung nếu thực sự TTS vượt qua rào cản Cooldown
+      // Trigger vibration only when TTS was accepted by the cooldown logic.
+      // Vibrating on every event would cause false repeated haptics even when
+      // no audio is actually spoken.
       if (accepted && event.withVibration) {
         final bool hasVibrator = await Vibration.hasVibrator();
         if (hasVibrator == true) {
@@ -68,7 +76,6 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
   }
 
   Future<void> _onPause(TtsPause event, Emitter<TtsState> emit) async {
-    
     await _pauseSpeaking();
     emit(const TtsPaused());
   }

@@ -127,10 +127,10 @@ void main() {
     });
 
     
-    test('load() calls repository.loadModel()', () async {
+    test('call(NoParams()) delegates to repository.loadModel()', () async {
       when(() => mockRepository.loadModel()).thenAnswer((_) async {});
 
-      await usecase.load();
+      await usecase.call(const NoParams());
 
       verify(() => mockRepository.loadModel()).called(1);
     });
@@ -145,11 +145,11 @@ void main() {
     });
 
     
-    test('load() propagates exception on failure', () async {
+    test('call(NoParams()) propagates exception on failure', () async {
       when(() => mockRepository.loadModel())
           .thenThrow(Exception('Model file not found'));
 
-      expect(() => usecase.load(), throwsException);
+      expect(() => usecase.call(const NoParams()), throwsException);
     });
 
     
@@ -161,7 +161,7 @@ void main() {
     test('does not call detectFromFrame', () async {
       when(() => mockRepository.loadModel()).thenAnswer((_) async {});
 
-      await usecase.load();
+      await usecase.call(const NoParams());
 
       verifyNever(() => mockRepository.detectFromFrame(any(), rotationDegrees: any(named: 'rotationDegrees')));
     });

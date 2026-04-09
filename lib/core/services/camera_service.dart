@@ -5,46 +5,61 @@ import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
 import '../error/exceptions.dart' as ex;
 
+/// Manages the [CameraController] lifecycle and the YUV420 frame stream.
+///
+/// Main responsibilities:
+/// - Initialize and dispose the controller safely.
+/// - Throttle frame rate using [AppConstants.activeInferenceFps].
+/// - Guard concurrent frame processing through [_isProcessingFrame].
+/// - Invalidate stale stream callbacks with [_streamGeneration] when the
+///   camera is switched or reinitialized.
+///
+/// Frame locking is owned entirely by [CameraService]. The [onFrame] callback
+/// receives an [onDone] function that must be called after inference finishes.
+/// If [onDone] is missed, the stream stays locked and freezes.
 class CameraService {
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
-  int _currentIndex = 0;
+  int _currentIndex    = 0;
   int _rotationDegrees = 0;
-  int _busyDropCount = 0;
+  int _busyDropCount   = 0;
   int _throttleDropCount = 0;
 
-  
   DateTime _lastFrameTime = DateTime.now();
-  
+
+  /// Minimum interval between frames in milliseconds for the target FPS.
   static const int _minFrameMs = 1000 ~/ AppConstants.activeInferenceFps;
 
-  
+  /// True while the previous frame is still being processed.
+  /// It is reset only by the caller-provided [onDone] callback.
   bool _isProcessingFrame = false;
 
-  
   bool _isInitializing = false;
-  bool _isDisposing = false;
+  bool _isDisposing    = false;
   Future<void>? _disposeFuture;
+
+  /// Incremented every time the camera is initialized or switched.
+  /// Each frame callback captures the current generation and is ignored if it
+  /// no longer matches the latest value.
   int _streamGeneration = 0;
 
-  CameraController? get controller  => _controller;
-  bool get isInitialized => _controller?.value.isInitialized ?? false;
-  bool get isStreaming   => _controller?.value.isStreamingImages ?? false;
-  bool get isFrontCamera =>
+  CameraController? get controller        => _controller;
+  bool get isInitialized  => _controller?.value.isInitialized ?? false;
+  bool get isStreaming     => _controller?.value.isStreamingImages ?? false;
+  bool get isFrontCamera  =>
       _cameras.isNotEmpty &&
       _cameras[_currentIndex].lensDirection == CameraLensDirection.front;
   int get sensorOrientation =>
       _cameras.isNotEmpty ? _cameras[_currentIndex].sensorOrientation : 0;
   int get rotationDegrees => _rotationDegrees;
 
-  
+  // Initialization
 
   Future<void> initialize({int cameraIndex = 0}) async {
+    // Wait for any previous dispose operation to finish before reinitializing.
     final pendingDispose = _disposeFuture;
-    if (pendingDispose != null) {
-      await pendingDispose;
-    }
-    
+    if (pendingDispose != null) await pendingDispose;
+
     if (_isInitializing) {
       debugPrint('[CameraService] initialize: already in progress, skip');
       return;
@@ -62,12 +77,12 @@ class CameraService {
   }
 
   Future<void> _setupController(CameraDescription camera) async {
-    
-    
     final old = _controller;
     _streamGeneration++;
     _isProcessingFrame = false;
-    _controller = null; 
+    _controller = null;
+
+    // Dispose the old controller before creating a new one.
     if (old != null) {
       try {
         if (old.value.isStreamingImages) await old.stopImageStream();
@@ -77,18 +92,16 @@ class CameraService {
       }
     }
 
-    
-    
-    
-    final bool isFront =
-        camera.lensDirection == CameraLensDirection.front;
+    // Front-camera rotation is mirrored because the sensor is mounted in the
+    // opposite direction.
+    final bool isFront = camera.lensDirection == CameraLensDirection.front;
     _rotationDegrees = isFront
-        ? camera.sensorOrientation % 360          
-        : (360 - camera.sensorOrientation) % 360; 
+        ? camera.sensorOrientation % 360
+        : (360 - camera.sensorOrientation) % 360;
 
     final ctrl = CameraController(
       camera,
-      ResolutionPreset.medium, 
+      ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
@@ -100,8 +113,13 @@ class CameraService {
     );
   }
 
-  
+  // Stream
 
+  /// Starts the camera frame stream.
+  ///
+  /// [onFrame] is called for frames that pass throttling and the busy guard.
+  /// The second parameter, [onDone], must be called after inference completes
+  /// so the next frame can proceed.
   void startImageStream({
     required void Function(CameraImage, void Function()) onFrame,
   }) {
@@ -115,20 +133,22 @@ class CameraService {
       return;
     }
 
-    _lastFrameTime = DateTime.now();
-    _isProcessingFrame = false;
-    _busyDropCount = 0;
-    _throttleDropCount = 0;
+    _lastFrameTime      = DateTime.now();
+    _isProcessingFrame  = false;
+    _busyDropCount      = 0;
+    _throttleDropCount  = 0;
 
     final int streamGeneration = ++_streamGeneration;
 
     unawaited(controller.startImageStream((CameraImage image) {
+      // Ignore frames from a stream generation that is no longer valid.
       if (_isDisposing ||
           _controller != controller ||
           _streamGeneration != streamGeneration) {
         return;
       }
-      
+
+      // Drop the frame if the previous inference is still running.
       if (_isProcessingFrame) {
         _busyDropCount++;
         if (kDebugMode && _busyDropCount % 30 == 0) {
@@ -137,6 +157,7 @@ class CameraService {
         return;
       }
 
+      // Drop the frame if the minimum frame interval has not been reached yet.
       final now = DateTime.now();
       if (now.difference(_lastFrameTime).inMilliseconds < _minFrameMs) {
         _throttleDropCount++;
@@ -148,15 +169,17 @@ class CameraService {
 
       _isProcessingFrame = true;
       _lastFrameTime = now;
-      
+
       onFrame(image, () {
-        _isProcessingFrame = false; // Tháº£ lock
+        // onDone releases the processing lock and should be called by the
+        // caller after inference finishes, including from a finally block.
+        _isProcessingFrame = false;
       });
     }).catchError((Object error, StackTrace stackTrace) {
       debugPrint('[CameraService] startImageStream error: $error');
     }));
 
-    debugPrint('[CameraService] stream started (~${AppConstants.activeInferenceFps}fps forward)');
+    debugPrint('[CameraService] stream started (~${AppConstants.activeInferenceFps}fps)');
   }
 
   Future<void> stopImageStream() async {
@@ -179,7 +202,10 @@ class CameraService {
     await _setupController(_cameras[_currentIndex]);
   }
 
-  
+  // Dispose
+
+  /// Disposes the controller and clears all resources.
+  /// The method is idempotent: repeated calls wait for the first one to finish.
   Future<void> dispose() async {
     final pendingDispose = _disposeFuture;
     if (pendingDispose != null) {
@@ -188,8 +214,8 @@ class CameraService {
     }
 
     final controller = _controller;
-    _controller = null;
-    _isDisposing = true;
+    _controller        = null;
+    _isDisposing       = true;
     _streamGeneration++;
     _isProcessingFrame = false;
 
@@ -203,7 +229,6 @@ class CameraService {
       } catch (e) {
         debugPrint('[CameraService] dispose stop stream error: $e');
       }
-
       try {
         await controller?.dispose();
       } catch (e) {
@@ -211,8 +236,8 @@ class CameraService {
       }
     } finally {
       _isProcessingFrame = false;
-      _isDisposing = false;
-      _disposeFuture = null;
+      _isDisposing       = false;
+      _disposeFuture     = null;
       completer.complete();
     }
   }

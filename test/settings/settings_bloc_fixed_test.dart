@@ -12,8 +12,6 @@ import 'package:safe_vision_app/features/tts/domain/usecases/configure_tts_useca
 import 'package:safe_vision_app/features/tts/domain/usecases/stop_speaking_usecase.dart';
 import 'package:safe_vision_app/features/tts/domain/repositories/tts_repository.dart';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 class MockSettingsRepository extends Mock implements SettingsRepository {}
 class MockTtsRepository      extends Mock implements TtsRepository {}
 
@@ -24,7 +22,7 @@ void main() {
   late DetectionConfig        detectionConfig;
   late MockTtsRepository      mockTtsRepo;
 
-  /// Capture configure() calls để verify params
+  /// Records configure() calls so the test can verify the parameters.
   final List<Map<String, dynamic>> capturedConfigCalls = [];
 
   setUp(() {
@@ -36,7 +34,6 @@ void main() {
     configureTts = ConfigureTtsUsecase(mockTtsRepo);
     stopSpeaking = StopSpeakingUsecase(mockTtsRepo);
 
-    // Default stubs
     when(() => mockRepo.getSpeechRate())
         .thenAnswer((_) async => AppConstants.ttsSpeechRate);
     when(() => mockRepo.getConfidenceThreshold())
@@ -57,6 +54,7 @@ void main() {
         .thenAnswer((_) async {});
     when(() => mockRepo.setShowConfidencePanel(any()))
         .thenAnswer((_) async {});
+
     when(() => mockTtsRepo.configure(
       language:   any(named: 'language'),
       speechRate: any(named: 'speechRate'),
@@ -68,50 +66,44 @@ void main() {
         'speechRate': invocation.namedArguments[const Symbol('speechRate')],
       });
     });
+
     when(() => mockTtsRepo.stop()).thenAnswer((_) async {});
   });
 
-  SettingsBloc buildBloc() => SettingsBloc(
-    mockRepo, configureTts, stopSpeaking, detectionConfig,
-  );
+  SettingsBloc buildBloc() =>
+      SettingsBloc(mockRepo, configureTts, stopSpeaking, detectionConfig);
 
-  // ─── FIX SV-006: Language change preserves speechRate ───────────────────
+  // Invariant: language changes include the current speechRate
 
-  group('FIX SV-006: SettingsTtsLanguageChanged preserves speechRate', () {
+  group('SettingsTtsLanguageChanged — speechRate dipertahankan', () {
     blocTest<SettingsBloc, SettingsState>(
-      'switching language keeps current speechRate in TTS config',
+      'mengganti bahasa tidak mereset speechRate di TTS engine',
       build: () {
-        // Setup: speechRate đã được set thành 0.75
         when(() => mockRepo.getSpeechRate()).thenAnswer((_) async => 0.75);
         return buildBloc();
       },
       act: (bloc) async {
-        // Load settings trước (speechRate = 0.75)
         bloc.add(const SettingsLoaded());
         await Future.delayed(const Duration(milliseconds: 10));
-
-        // Đổi language
         bloc.add(const SettingsTtsLanguageChanged('en-US'));
         await Future.delayed(const Duration(milliseconds: 10));
       },
       verify: (_) {
-        // Tìm configure call từ SettingsTtsLanguageChanged (lần cuối)
         final langChangeCalls = capturedConfigCalls
             .where((c) => c['language'] == 'en-US')
             .toList();
 
         expect(langChangeCalls, isNotEmpty,
-            reason: 'TTS configure phải được gọi khi đổi language');
+            reason: 'TTS configure harus dipanggil saat bahasa diganti');
 
-        final call = langChangeCalls.last;
-        expect(call['speechRate'], equals(0.75),
-            reason: 'FIX SV-006: speechRate (0.75) phải được giữ nguyên khi đổi language. '
-                'BUG CŨ: speechRate = null → TTS reset về default speed');
+        expect(langChangeCalls.last['speechRate'], equals(0.75),
+            reason: 'speechRate (0.75) harus diteruskan bersama language. '
+                'Jika tidak, TTS engine mereset ke kecepatan default.');
       },
     );
 
     blocTest<SettingsBloc, SettingsState>(
-      'language change emits state with new language but same speechRate',
+      'state setelah ganti bahasa mempertahankan speechRate yang sama',
       build: () {
         when(() => mockRepo.getSpeechRate()).thenAnswer((_) async => 0.6);
         return buildBloc();
@@ -126,7 +118,6 @@ void main() {
         isA<SettingsState>()
             .having((s) => s.isLoading, 'isLoading', isFalse)
             .having((s) => s.speechRate, 'speechRate', closeTo(0.6, 0.001)),
-        // State sau language change: language updated, speechRate unchanged
         isA<SettingsState>()
             .having((s) => s.ttsLanguage, 'ttsLanguage', 'en-US')
             .having((s) => s.speechRate, 'speechRate', closeTo(0.6, 0.001)),
@@ -134,15 +125,13 @@ void main() {
     );
 
     blocTest<SettingsBloc, SettingsState>(
-      'changing speechRate then language: language call uses updated rate',
+      'mengubah rate lalu bahasa: panggilan configure menggunakan rate terbaru',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
         await Future.delayed(const Duration(milliseconds: 10));
-        // Đổi rate đến 0.8
         bloc.add(const SettingsSpeechRateChanged(0.8));
         await Future.delayed(const Duration(milliseconds: 10));
-        // Đổi language — phải dùng rate 0.8
         bloc.add(const SettingsTtsLanguageChanged('en-US'));
         await Future.delayed(const Duration(milliseconds: 10));
       },
@@ -153,16 +142,16 @@ void main() {
 
         expect(langCalls, isNotEmpty);
         expect(langCalls.last['speechRate'], closeTo(0.8, 0.001),
-            reason: 'Sau khi rate được set = 0.8, language change phải dùng 0.8');
+            reason: 'Setelah rate diset ke 0.8, ganti bahasa harus memakai 0.8');
       },
     );
   });
 
-  // ─── speechRate change tests ─────────────────────────────────────────────
+  // speechRate change
 
   group('SettingsSpeechRateChanged', () {
     blocTest<SettingsBloc, SettingsState>(
-      'updates state and calls TTS configure with both rate and language',
+      'configure TTS dipanggil dengan rate dan language bersama-sama',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
@@ -174,17 +163,17 @@ void main() {
             .where((c) => c['speechRate'] == 0.75)
             .toList();
         expect(rateCalls, isNotEmpty);
-        // Language phải được pass bersama rate
-        expect(rateCalls.last['language'], isNotNull);
+        expect(rateCalls.last['language'], isNotNull,
+            reason: 'Language harus selalu diteruskan bersama speechRate');
       },
     );
   });
 
-  // ─── Confidence threshold → DetectionConfig ──────────────────────────────
+  // Confidence threshold -> DetectionConfig
 
-  group('SettingsConfidenceChanged → updates DetectionConfig', () {
+  group('SettingsConfidenceChanged', () {
     blocTest<SettingsBloc, SettingsState>(
-      'confidence change applies to DetectionConfig immediately',
+      'perubahan confidence langsung diterapkan ke DetectionConfig',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
@@ -195,17 +184,18 @@ void main() {
         expect(
           detectionConfig.confidenceThreshold,
           closeTo(0.65, 0.001),
-          reason: 'DetectionConfig phải được update ngay khi confidence thay đổi',
+          reason: 'DetectionConfig harus diupdate segera agar frame berikutnya '
+              'menggunakan threshold baru tanpa restart model',
         );
       },
     );
   });
 
-  // ─── Voice toggle ────────────────────────────────────────────────────────
+  // Voice toggle
 
   group('SettingsVoiceToggled', () {
     blocTest<SettingsBloc, SettingsState>(
-      'disabling voice calls stopSpeaking',
+      'menonaktifkan voice memanggil stopSpeaking',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
@@ -217,22 +207,18 @@ void main() {
         isA<SettingsState>().having((s) => s.voiceEnabled, '', isTrue),
         isA<SettingsState>().having((s) => s.voiceEnabled, '', isFalse),
       ],
-      verify: (_) {
-        verify(() => mockTtsRepo.stop()).called(1);
-      },
+      verify: (_) => verify(() => mockTtsRepo.stop()).called(1),
     );
 
     blocTest<SettingsBloc, SettingsState>(
-      'enabling voice does not call stopSpeaking',
+      'mengaktifkan voice tidak memanggil stopSpeaking',
       build: buildBloc,
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
         await Future.delayed(const Duration(milliseconds: 10));
         bloc.add(const SettingsVoiceToggled(true));
       },
-      verify: (_) {
-        verifyNever(() => mockTtsRepo.stop());
-      },
+      verify: (_) => verifyNever(() => mockTtsRepo.stop()),
     );
   });
 }

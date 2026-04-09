@@ -5,10 +5,16 @@ import 'package:safe_vision_app/features/detection/domain/entities/detection_obj
 import 'package:safe_vision_app/features/detection/presentation/widgets/bounding_box_painter.dart';
 
 void main() {
-  // ─── FIX SV-004: TextPainter memory leak ────────────────────────────────
+  // Reset the static cache between groups so TextPainter state from
+  // one group does not affect the next one.
+  tearDown(() {
+    BoundingBoxPainter.clearCacheForTesting();
+  });
 
-  group('FIX SV-004: BoundingBoxPainter.dispose() clears TextPainter cache', () {
-    testWidgets('dispose() clears cache without exception', (tester) async {
+  // dispose() and TextPainter memory management
+
+  group('BoundingBoxPainter.dispose() clears TextPainter cache', () {
+    testWidgets('dispose() chạy không crash và clear đúng labels', (tester) async {
       final painter = BoundingBoxPainter(
         boxes: [
           const SmoothedBox(
@@ -23,7 +29,7 @@ void main() {
         version: 1,
       );
 
-      // Paint để populate TextPainter cache
+      // Paint once to populate the TextPainter cache with 'person' and 'bicycle'.
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -34,12 +40,11 @@ void main() {
         ),
       );
 
-      // dispose() phải bỏ widget không crash và clear cache
       expect(() => painter.dispose(), returnsNormally,
-          reason: 'FIX SV-004: dispose() phải clear TextPainter cache không crash');
+          reason: 'dispose() phải clear TextPainter cache không crash');
     });
 
-    testWidgets('multiple labels are cached then cleared on dispose', (tester) async {
+    testWidgets('dispose() với nhiều labels không để lại leak', (tester) async {
       final boxes = List.generate(
         10,
         (i) => SmoothedBox(
@@ -58,19 +63,14 @@ void main() {
         ),
       );
 
-      // Painter đã populate cache với 10 labels
-      // dispose() phải clear tất cả và không throw
       expect(() => painter.dispose(), returnsNormally);
     });
   });
 
-  // ─── FIX SV-008: Static Paint mutation ───────────────────────────────────
+  // Paint objects do not share state between painters
 
-  group('FIX SV-008: Paint objects are per-frame, not mutated static', () {
-    testWidgets('painting multiple frames does not corrupt colors', (tester) async {
-      // Test rằng boxes với màu khác nhau được render đúng
-      // (không bị carry-over từ frame trước do static Paint mutation)
-
+  group('Paint objects per-instance — no shared mutable state', () {
+    testWidgets('frame kế tiếp với label khác không bị ảnh hưởng màu sắc', (tester) async {
       final boxes1 = [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
@@ -84,7 +84,6 @@ void main() {
         ),
       ];
 
-      // Frame 1: person
       final painter1 = BoundingBoxPainter(boxes: boxes1, version: 1);
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: SizedBox.expand(
@@ -93,25 +92,24 @@ void main() {
       expect(tester.takeException(), isNull,
           reason: 'Frame 1 không được throw');
 
-      // Frame 2: bicycle
       final painter2 = BoundingBoxPainter(boxes: boxes2, version: 2);
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: SizedBox.expand(
           child: CustomPaint(painter: painter2)))),
       );
       expect(tester.takeException(), isNull,
-          reason: 'FIX SV-008: Frame 2 không được bị ảnh hưởng bởi static Paint từ frame 1');
+          reason: 'Frame 2 không bị ảnh hưởng bởi Paint state của frame 1');
     });
 
-    testWidgets('missed frames opacity applied correctly per box', (tester) async {
+    testWidgets('missedFrames opacity áp dụng độc lập cho từng box', (tester) async {
       final boxes = [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
-          label: 'car', trackId: 1, missedFrames: 0, // opacity = 1.0
+          label: 'car', trackId: 1, missedFrames: 0,
         ),
         const SmoothedBox(
           left: 0.5, top: 0.5, width: 0.2, height: 0.2,
-          label: 'truck', trackId: 2, missedFrames: 2, // opacity < 1.0
+          label: 'truck', trackId: 2, missedFrames: 2,
         ),
       ];
 
@@ -124,10 +122,10 @@ void main() {
     });
   });
 
-  // ─── FIX SV-011: shouldRepaint O(1) via version ──────────────────────────
+  // shouldRepaint uses an O(1) version counter
 
-  group('FIX SV-011: shouldRepaint uses O(1) version comparison', () {
-    test('same version → no repaint needed', () {
+  group('shouldRepaint dùng version counter O(1)', () {
+    test('cùng version → không repaint', () {
       final boxes = [
         const SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
@@ -138,11 +136,11 @@ void main() {
       final painter2 = BoundingBoxPainter(boxes: boxes, version: 5);
 
       expect(painter1.shouldRepaint(painter2), isFalse,
-          reason: 'FIX SV-011: même version → shouldRepaint = false (O(1))');
+          reason: 'Cùng version → shouldRepaint = false, O(1)');
     });
 
-    test('different version → repaint needed', () {
-      final boxes = const [
+    test('version khác → repaint', () {
+      const boxes = [
         SmoothedBox(
           left: 0.1, top: 0.1, width: 0.3, height: 0.4,
           label: 'person', trackId: 1, missedFrames: 0,
@@ -151,41 +149,49 @@ void main() {
       final painter1 = BoundingBoxPainter(boxes: boxes, version: 5);
       final painter2 = BoundingBoxPainter(boxes: boxes, version: 6);
 
-      expect(painter1.shouldRepaint(painter2), isTrue,
-          reason: 'Version thay đổi → shouldRepaint = true');
+      expect(painter1.shouldRepaint(painter2), isTrue);
     });
 
-    test('different mirrorHorizontal → repaint needed regardless of version', () {
-      final painter1 = BoundingBoxPainter(boxes: const [], mirrorHorizontal: false, version: 1);
-      final painter2 = BoundingBoxPainter(boxes: const [], mirrorHorizontal: true, version: 1);
+    test('mirrorHorizontal khác → repaint bất kể version', () {
+      final painter1 = BoundingBoxPainter(
+          boxes: const [], mirrorHorizontal: false, version: 1);
+      final painter2 = BoundingBoxPainter(
+          boxes: const [], mirrorHorizontal: true, version: 1);
 
       expect(painter1.shouldRepaint(painter2), isTrue);
     });
 
-    test('same version, same boxes, same mirror → no repaint', () {
-      final painter1 = BoundingBoxPainter(boxes: const [], mirrorHorizontal: false, version: 3);
-      final painter2 = BoundingBoxPainter(boxes: const [], mirrorHorizontal: false, version: 3);
+    test('cùng version + cùng mirror → không repaint', () {
+      final painter1 = BoundingBoxPainter(
+          boxes: const [], mirrorHorizontal: false, version: 3);
+      final painter2 = BoundingBoxPainter(
+          boxes: const [], mirrorHorizontal: false, version: 3);
 
       expect(painter1.shouldRepaint(painter2), isFalse);
     });
   });
 
-  // ─── BoxTracker version counter ──────────────────────────────────────────
+  // BoxTracker version counter
 
-  group('BoxTracker version counter (SV-011 support)', () {
+  group('BoxTracker version counter', () {
     DetectionObject makeDetection({
-      String label = 'person', double left = 0.1, double w = 0.2, double h = 0.3,
-    }) => DetectionObject(
-      label: label, confidence: 0.9,
-      boundingBox: BoundingBox(left: left, top: 0.1, width: w, height: h),
-    );
+      String label = 'person',
+      double left = 0.1,
+      double w = 0.2,
+      double h = 0.3,
+    }) =>
+        DetectionObject(
+          label: label,
+          confidence: 0.9,
+          boundingBox: BoundingBox(left: left, top: 0.1, width: w, height: h),
+        );
 
-    test('version starts at 0', () {
+    test('version bắt đầu từ 0', () {
       final tracker = BoxTracker();
       expect(tracker.version, equals(0));
     });
 
-    test('version increments on each update', () {
+    test('version tăng sau mỗi lần update', () {
       final tracker = BoxTracker();
       tracker.update([makeDetection()]);
       expect(tracker.version, equals(1));
@@ -193,24 +199,24 @@ void main() {
       expect(tracker.version, equals(2));
     });
 
-    test('version increments on clear()', () {
+    test('version tăng sau clear()', () {
       final tracker = BoxTracker();
       final vBefore = tracker.version;
       tracker.clear();
       expect(tracker.version, greaterThan(vBefore));
     });
 
-    test('version increments even on empty update', () {
+    test('update rỗng vẫn tăng version', () {
       final tracker = BoxTracker();
       tracker.update([]);
       expect(tracker.version, equals(1));
     });
   });
 
-  // ─── Painter regression tests ─────────────────────────────────────────────
+  // Painter regression
 
   group('BoundingBoxPainter regression', () {
-    testWidgets('paints empty boxes without error', (tester) async {
+    testWidgets('vẽ không lỗi khi danh sách rỗng', (tester) async {
       final painter = BoundingBoxPainter(boxes: const [], version: 0);
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: SizedBox.expand(
@@ -219,12 +225,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('mirrorHorizontal flips boxes without error', (tester) async {
+    testWidgets('mirrorHorizontal flip không crash', (tester) async {
       final painter = BoundingBoxPainter(
-        boxes: const [SmoothedBox(
-          left: 0.3, top: 0.3, width: 0.4, height: 0.4,
-          label: 'car', trackId: 1, missedFrames: 0,
-        )],
+        boxes: const [
+          SmoothedBox(
+            left: 0.3, top: 0.3, width: 0.4, height: 0.4,
+            label: 'car', trackId: 1, missedFrames: 0,
+          )
+        ],
         mirrorHorizontal: true,
         version: 1,
       );
@@ -235,11 +243,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('handles box near edges (clamp behavior)', (tester) async {
+    testWidgets('box ngoài biên được clamp — không crash', (tester) async {
       final painter = BoundingBoxPainter(
         boxes: const [
-          SmoothedBox(left: -0.1, top: -0.1, width: 1.5, height: 1.5,
-              label: 'overflow', trackId: 1, missedFrames: 0),
+          SmoothedBox(
+            left: -0.1, top: -0.1, width: 1.5, height: 1.5,
+            label: 'overflow', trackId: 1, missedFrames: 0,
+          ),
         ],
         version: 1,
       );

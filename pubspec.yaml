@@ -9,32 +9,62 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # UI
   cupertino_icons: ^1.0.8
+
+  # State management
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
+  bloc_concurrency: ^0.3.0
+
+  # Dependency injection
   get_it: ^8.0.3
+
+  # Text-to-speech
   flutter_tts: ^4.2.2
+
+  # Haptic feedback
   vibration: ^2.0.1
+
+  # Camera
   camera: ^0.10.6
+
+  # AI inference — TFLite runtime untuk model YOLOv8
   tflite_flutter: ^0.11.0
+
+  # Permissions
   permission_handler: ^11.3.1
+
+  # Storage & file utilities
   path_provider: ^2.1.3
   path: ^1.9.0
-  image: ^4.7.2
   shared_preferences: ^2.5.3
-  bloc_concurrency: ^0.3.0
+
+  # Image processing — konversi format untuk inference pipeline
+  image: ^4.7.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  bloc_test: ^10.0.0      # moved here
-  mocktail: ^1.0.4        # moved here
-  flutter_lints: ^5.0.0   # moved here
+
+  # BLoC testing utilities
+  bloc_test: ^10.0.0
+
+  # Mock generation untuk unit test
+  mocktail: ^1.0.4
+
+  # Lint rules
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
+
   assets:
+    # Model YOLOv8 dan label file — harus ada sebelum app dijalankan
     - assets/models/labels.txt
     - assets/models/yolov8n_safevision.tflite
+
+    # UI assets
     - assets/icons/sv_icon.png
     - assets/images/sv_logo.png

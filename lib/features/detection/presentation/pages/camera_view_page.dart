@@ -30,10 +30,13 @@ class CameraViewPage extends StatefulWidget {
 class _CameraViewPageState extends State<CameraViewPage>
     with WidgetsBindingObserver {
   final CameraService _cameraService = sl<CameraService>();
-  final BoxTracker _tracker = BoxTracker();
+  final BoxTracker    _tracker       = BoxTracker();
 
   bool _cameraReady = false;
 
+  /// Session counter used to invalidate callbacks from old streams.
+  /// It increments whenever the camera is reinitialized or switched, so stale
+  /// callbacks can detect the mismatch and return early.
   int _cameraSession = 0;
 
   late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
@@ -55,11 +58,9 @@ class _CameraViewPageState extends State<CameraViewPage>
     _phase = _LifecyclePhase.disposed;
     WidgetsBinding.instance.removeObserver(this);
     context.read<DetectionBloc>().add(const DetectionStopped());
-
     context.read<TtsBloc>().add(const TtsStop());
     _tracker.clear();
-    _clearBoxes();
-    _disposeBoxes();
+    _disposeBoxNotifier();
     unawaited(_cameraService.dispose());
     super.dispose();
   }
@@ -71,13 +72,8 @@ class _CameraViewPageState extends State<CameraViewPage>
         break;
 
       case AppLifecycleState.paused:
-        if (_phase == _LifecyclePhase.active) {
-          _phase = _LifecyclePhase.paused;
-          unawaited(_cameraService.stopImageStream());
-        }
-        break;
-
       case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
         if (_phase == _LifecyclePhase.active) {
           _phase = _LifecyclePhase.paused;
           unawaited(_cameraService.stopImageStream());
@@ -94,13 +90,6 @@ class _CameraViewPageState extends State<CameraViewPage>
           }
         }
         break;
-
-      case AppLifecycleState.hidden:
-        if (_phase == _LifecyclePhase.active) {
-          _phase = _LifecyclePhase.paused;
-          unawaited(_cameraService.stopImageStream());
-        }
-        break;
     }
   }
 
@@ -108,6 +97,10 @@ class _CameraViewPageState extends State<CameraViewPage>
     if (_phase == _LifecyclePhase.disposed) return;
     try {
       await AppPermissionHandler.requestCamera();
+
+      // Increment the session before initialization so stale callbacks are
+      // ignored automatically.
+      _cameraSession++;
 
       await _cameraService.initialize();
       if (!mounted || _phase == _LifecyclePhase.disposed) return;
@@ -121,6 +114,9 @@ class _CameraViewPageState extends State<CameraViewPage>
     }
   }
 
+  /// Starts a new frame stream for the current [_cameraSession].
+  /// The callback captures the session id; if it changes before the callback
+  /// runs, that frame is ignored and never dispatched to the BLoC.
   void _startStreaming() {
     if (_phase == _LifecyclePhase.disposed) return;
 
@@ -135,7 +131,10 @@ class _CameraViewPageState extends State<CameraViewPage>
         }
         context.read<DetectionBloc>().add(
               DetectionFrameReceived(
-                  image, _cameraService.rotationDegrees, onDone),
+                image,
+                _cameraService.rotationDegrees,
+                onDone,
+              ),
             );
       },
     );
@@ -147,11 +146,9 @@ class _CameraViewPageState extends State<CameraViewPage>
 
     _cameraSession++;
 
-    setState(() {
-      _cameraReady = false;
-    });
+    setState(() => _cameraReady = false);
     _tracker.clear();
-    _clearBoxes();
+    _setBoxes(const []);
 
     try {
       await _cameraService.switchCamera();
@@ -199,7 +196,7 @@ class _CameraViewPageState extends State<CameraViewPage>
         children: [
           RepaintBoundary(
             child: _CameraLayer(
-              service: _cameraService,
+              service:     _cameraService,
               cameraReady: _cameraReady,
             ),
           ),
@@ -218,7 +215,7 @@ class _CameraViewPageState extends State<CameraViewPage>
                     _setBoxes(_tracker.update(state.detections));
                   } else if (state is DetectionInitial) {
                     _tracker.clear();
-                    _clearBoxes();
+                    _setBoxes(const []);
                   }
                 },
               ),
@@ -230,14 +227,14 @@ class _CameraViewPageState extends State<CameraViewPage>
               },
               builder: (context, state) => _DetectionOverlay(
                 boxNotifier: _boxNotifier,
-                state: state,
-                isFront: _cameraService.isFrontCamera,
-                onError: _buildError,
+                state:       state,
+                isFront:     _cameraService.isFrontCamera,
+                onError:     _buildError,
               ),
             ),
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
+            top:   MediaQuery.of(context).padding.top + 8,
             right: 8,
             child: _buildControls(context),
           ),
@@ -262,21 +259,21 @@ class _CameraViewPageState extends State<CameraViewPage>
   Widget _buildControls(BuildContext ctx) => Column(
         children: [
           _IconBtn(
-            icon: Icons.flip_camera_ios,
+            icon:    Icons.flip_camera_ios,
             tooltip: 'Chuyển camera',
-            onTap: _switchCamera,
+            onTap:   _switchCamera,
           ),
           const SizedBox(height: 8),
           _IconBtn(
-            icon: Icons.volume_up,
+            icon:    Icons.volume_up,
             tooltip: 'Tắt tiếng',
-            onTap: () => ctx.read<TtsBloc>().add(const TtsStop()),
+            onTap:   () => ctx.read<TtsBloc>().add(const TtsStop()),
           ),
           const SizedBox(height: 8),
           _IconBtn(
-            icon: Icons.settings,
+            icon:    Icons.settings,
             tooltip: 'Cài đặt',
-            onTap: () => Navigator.pushNamed(ctx, '/settings'),
+            onTap:   () => Navigator.pushNamed(ctx, '/settings'),
           ),
         ],
       );
@@ -286,9 +283,7 @@ class _CameraViewPageState extends State<CameraViewPage>
     _boxNotifier.value = boxes;
   }
 
-  void _clearBoxes() => _setBoxes(const []);
-
-  void _disposeBoxes() {
+  void _disposeBoxNotifier() {
     if (_boxNotifierDisposed) return;
     _boxNotifierDisposed = true;
     _boxNotifier.dispose();
@@ -299,9 +294,9 @@ enum _LifecyclePhase { active, paused, disposed }
 
 class _DetectionOverlay extends StatelessWidget {
   final ValueNotifier<List<SmoothedBox>> boxNotifier;
-  final DetectionState state;
-  final bool isFront;
-  final Widget Function(String) onError;
+  final DetectionState                   state;
+  final bool                             isFront;
+  final Widget Function(String)          onError;
 
   const _DetectionOverlay({
     required this.boxNotifier,
@@ -321,7 +316,7 @@ class _DetectionOverlay extends StatelessWidget {
             builder: (_, boxes, __) => IgnorePointer(
               child: CustomPaint(
                 painter: BoundingBoxPainter(
-                  boxes: boxes,
+                  boxes:           boxes,
                   mirrorHorizontal: isFront,
                 ),
               ),
@@ -344,15 +339,16 @@ class _DetectionOverlay extends StatelessWidget {
             ),
           ),
         BlocBuilder<SettingsBloc, SettingsState>(
-          buildWhen: (p, c) => p.showConfidencePanel != c.showConfidencePanel,
+          buildWhen: (p, c) =>
+              p.showConfidencePanel != c.showConfidencePanel,
           builder: (context, settings) {
             if (!settings.showConfidencePanel) return const SizedBox.shrink();
             final detections = state is DetectionSuccess
                 ? (state as DetectionSuccess).detections
                 : <DetectionObject>[];
             return Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 8,
+              top:   MediaQuery.of(context).padding.top + 8,
+              left:  8,
               right: 80,
               child: ConfidenceScoreDisplay(detections: detections),
             );
@@ -360,8 +356,8 @@ class _DetectionOverlay extends StatelessWidget {
         ),
         const Positioned(
           bottom: 100,
-          left: 16,
-          right: 16,
+          left:   16,
+          right:  16,
           child: Align(
             alignment: Alignment.center,
             child: VoiceFeedbackIndicator(),
@@ -370,8 +366,8 @@ class _DetectionOverlay extends StatelessWidget {
         if (state is DetectionFailure)
           Positioned(
             bottom: 16,
-            left: 16,
-            right: 16,
+            left:   16,
+            right:  16,
             child: onError((state as DetectionFailure).message),
           ),
       ],
@@ -381,7 +377,7 @@ class _DetectionOverlay extends StatelessWidget {
 
 class _CameraLayer extends StatelessWidget {
   final CameraService service;
-  final bool cameraReady;
+  final bool          cameraReady;
 
   const _CameraLayer({required this.service, required this.cameraReady});
 
@@ -404,8 +400,8 @@ class _CameraLayer extends StatelessWidget {
 }
 
 class _IconBtn extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
+  final IconData   icon;
+  final String     tooltip;
   final VoidCallback onTap;
 
   const _IconBtn({
@@ -420,11 +416,11 @@ class _IconBtn extends StatelessWidget {
         child: Tooltip(
           message: tooltip,
           child: Container(
-            width: 44,
+            width:  44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
-              shape: BoxShape.circle,
+              color:  Colors.black.withValues(alpha: 0.55),
+              shape:  BoxShape.circle,
               border: Border.all(color: Colors.white30),
             ),
             child: Icon(icon, color: Colors.white, size: 22),

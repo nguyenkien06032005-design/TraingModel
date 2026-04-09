@@ -3,21 +3,32 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../../../core/constants/app_constants.dart';
 
-/// SV-001 FIX: Xóa double _enqueue() call ở cuối speakWarning()
-/// SV-012 FIX: Refactor _lastSpoken cleanup — logic đơn giản, nhất quán
+/// Wrapper around [FlutterTts] with cooldown protection and queue deduplication.
+///
+/// Important invariants:
+/// 1. The same text must not be spoken again within
+///    [AppConstants.ttsCooldownMs].
+/// 2. A text must not be added to the queue twice. Enqueue happens only once
+///    after the cooldown check succeeds.
+///
+/// Playback modes:
+/// - [speakWarning]: enqueue and wait for the current audio to finish.
+/// - [speakImmediate]: stop current audio and queue, then speak immediately.
+///   Used for high-priority danger warnings.
 class TtsService {
   final FlutterTts _tts = FlutterTts();
 
   bool _isSpeaking = false;
   final List<String> _queue = [];
 
-  /// Lưu timestamp lần cuối mỗi text được phát — dùng để enforce cooldown
+  /// Last accepted timestamp for each text, used to enforce cooldown.
+  /// The map is pruned periodically so it cannot grow without bound.
   final Map<String, DateTime> _lastSpoken = {};
 
-  String _language = AppConstants.ttsLanguage;
+  String _language  = AppConstants.ttsLanguage;
   double _speechRate = AppConstants.ttsSpeechRate;
-  double _pitch = AppConstants.ttsPitch;
-  double _volume = AppConstants.ttsVolume;
+  double _pitch      = AppConstants.ttsPitch;
+  double _volume     = AppConstants.ttsVolume;
 
   Future<void> initialize({
     String? language,
@@ -25,17 +36,17 @@ class TtsService {
     double? pitch,
     double? volume,
   }) async {
-    if (language != null) _language = language;
+    if (language   != null) _language   = language;
     if (speechRate != null) _speechRate = speechRate;
-    if (pitch != null) _pitch = pitch;
-    if (volume != null) _volume = volume;
+    if (pitch      != null) _pitch      = pitch;
+    if (volume     != null) _volume     = volume;
 
     await _tts.setLanguage(_language);
     await _tts.setSpeechRate(_speechRate);
     await _tts.setPitch(_pitch);
     await _tts.setVolume(_volume);
 
-    _tts.setStartHandler(() => _isSpeaking = true);
+    _tts.setStartHandler(()  => _isSpeaking = true);
     _tts.setCompletionHandler(() {
       _isSpeaking = false;
       _processQueue();
@@ -50,34 +61,34 @@ class TtsService {
     });
   }
 
-  /// FIX SV-001 + SV-012:
-  /// - Cleanup _lastSpoken TRƯỚC khi check cooldown (đúng thứ tự)
-  /// - Set lastSpoken và enqueue chỉ MỘT LẦN (không còn duplicate)
-  /// - Logic đơn giản, linear, dễ đọc
+  /// Speaks text through the queue while respecting per-text cooldown.
+  ///
+  /// Processing order:
+  /// 1. Prune expired entries so the map stays bounded.
+  /// 2. Check cooldown and return `false` immediately if still inside it.
+  /// 3. Record the timestamp and enqueue exactly once.
   Future<bool> speakWarning(String text) async {
     final now = DateTime.now();
-
-    // 1. Cleanup các entry đã expired trước khi làm gì
     _pruneLastSpoken(now);
 
-    // 2. Kiểm tra cooldown
     final last = _lastSpoken[text];
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
       return false;
     }
 
-    // 3. Ghi nhớ và enqueue — CHỈ MỘT LẦN (đây là fix chính cho SV-001)
     _lastSpoken[text] = now;
     _enqueue(text);
     return true;
   }
 
+  /// Speaks text immediately, bypassing the current queue.
+  /// Applies the same cooldown as [speakWarning] to avoid stutter when the
+  /// same danger warning is triggered repeatedly.
   Future<bool> speakImmediate(String text) async {
     final now = DateTime.now();
     _pruneLastSpoken(now);
 
-    // ✅ FIX SV-014: Thêm cooldown cho immediate để chống Stutter
     final last = _lastSpoken[text];
     if (last != null &&
         now.difference(last).inMilliseconds < AppConstants.ttsCooldownMs) {
@@ -111,9 +122,11 @@ class TtsService {
     _isSpeaking = false;
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────────
+  // Private helpers
 
-  /// Xóa các entry đã quá 2× cooldown — tránh map phình không giới hạn
+  /// Removes entries older than two cooldown windows.
+  /// Runs only when the map grows beyond 100 entries to avoid an O(n) scan on
+  /// every frame.
   void _pruneLastSpoken(DateTime now) {
     if (_lastSpoken.length > 100) {
       _lastSpoken.removeWhere((_, time) =>

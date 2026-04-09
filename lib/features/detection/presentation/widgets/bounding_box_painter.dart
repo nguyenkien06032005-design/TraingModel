@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/detection_object.dart';
 
+/// Position and state for an object after tracker smoothing.
+/// [missedFrames] is used to gradually reduce opacity when the object
+/// temporarily disappears.
 class SmoothedBox {
   final double left, top, width, height;
   final String label;
@@ -34,6 +37,8 @@ class SmoothedBox {
       Object.hash(left, top, width, height, label, trackId, missedFrames);
 }
 
+/// Internal state for a track, storing the smoothed position and the
+/// last time the object was seen.
 class _TrackedBox {
   static const double alpha = AppConstants.trackingSmoothingAlpha;
   final int trackId;
@@ -52,32 +57,33 @@ class _TrackedBox {
     required this.lastSeenAt,
   }) : missedFrames = 0;
 
+  /// Applies exponential smoothing so bounding boxes move smoothly instead of
+  /// jumping abruptly between frames.
   void update(BoundingBox box, DateTime now) {
-    left = left * (1 - alpha) + box.left * alpha;
-    top = top * (1 - alpha) + box.top * alpha;
-    width = width * (1 - alpha) + box.width * alpha;
+    left   = left   * (1 - alpha) + box.left   * alpha;
+    top    = top    * (1 - alpha) + box.top    * alpha;
+    width  = width  * (1 - alpha) + box.width  * alpha;
     height = height * (1 - alpha) + box.height * alpha;
     missedFrames = 0;
     lastSeenAt = now;
   }
 
   SmoothedBox snapshot() => SmoothedBox(
-        left: left,
-        top: top,
-        width: width,
-        height: height,
-        label: label,
-        trackId: trackId,
-        missedFrames: missedFrames,
+        left: left, top: top, width: width, height: height,
+        label: label, trackId: trackId, missedFrames: missedFrames,
       );
 }
 
-/// FIX SV-011: Version counter thay vì O(n) box comparison
+/// Manages [_TrackedBox] instances across consecutive frames.
+/// Uses IoU to match new detections to existing tracks with greedy matching.
+/// Tracks are removed after [maxTrackAge] if no detection matches them.
+///
+/// [version] increments whenever state changes and is used by
+/// [BoundingBoxPainter.shouldRepaint] for an `O(1)` comparison.
 class BoxTracker {
   final Map<int, _TrackedBox> _tracked = {};
   int _nextTrackId = 0;
 
-  // ✅ FIX SV-011: version tăng mỗi khi state thay đổi
   int _version = 0;
   int get version => _version;
 
@@ -102,16 +108,8 @@ class BoxTracker {
         final tracked = entry.value;
         if (tracked.label != det.label) continue;
         if (usedTrackIds.contains(entry.key)) continue;
-        final iou = _iou(
-          tracked.left,
-          tracked.top,
-          tracked.width,
-          tracked.height,
-          box.left,
-          box.top,
-          box.width,
-          box.height,
-        );
+        final iou = _iou(tracked.left, tracked.top, tracked.width,
+            tracked.height, box.left, box.top, box.width, box.height);
         if (iou > bestIou) {
           bestIou = iou;
           bestTrackId = entry.key;
@@ -124,13 +122,9 @@ class BoxTracker {
       } else {
         final trackId = _nextTrackId++;
         _tracked[trackId] = _TrackedBox(
-          trackId: trackId,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          label: det.label,
-          lastSeenAt: timestamp,
+          trackId: trackId, left: box.left, top: box.top,
+          width: box.width, height: box.height,
+          label: det.label, lastSeenAt: timestamp,
         );
         usedTrackIds.add(trackId);
       }
@@ -140,21 +134,13 @@ class BoxTracker {
       (_, tracked) => timestamp.difference(tracked.lastSeenAt) > maxTrackAge,
     );
 
-    _version++; // ✅ bump version mỗi khi tracker cập nhật
+    _version++;
     return _tracked.values.map((t) => t.snapshot()).toList(growable: false)
       ..sort((a, b) => a.trackId.compareTo(b.trackId));
   }
 
-  double _iou(
-    double al,
-    double at,
-    double aw,
-    double ah,
-    double bl,
-    double bt,
-    double bw,
-    double bh,
-  ) {
+  double _iou(double al, double at, double aw, double ah,
+      double bl, double bt, double bw, double bh) {
     final iL = al > bl ? al : bl;
     final iT = at > bt ? at : bt;
     final iR = (al + aw) < (bl + bw) ? (al + aw) : (bl + bw);
@@ -171,29 +157,38 @@ class BoxTracker {
   }
 }
 
+/// Draws [SmoothedBox] bounding boxes onto the camera canvas.
+///
+/// [version] enables an `O(1)` comparison inside [shouldRepaint] instead of
+/// walking every box on each frame.
+///
+/// [TextPainter] instances are cached by label to avoid repeated text layout.
+/// The cache is capped with LRU-style eviction at 100 entries.
+/// Call [dispose] when the painter is no longer needed to release any
+/// [TextPainter] objects owned by this painter's labels.
 class BoundingBoxPainter extends CustomPainter {
   final List<SmoothedBox> boxes;
   final bool mirrorHorizontal;
-
-  // ✅ FIX SV-011: Version-based shouldRepaint — O(1) thay vì O(n)
   final int _version;
 
-  /// Cache cho TextPainter — tránh tạo lại mỗi frame cho cùng label (Giữ nguyên bằng static)
+  /// [TextPainter] cache by label to avoid relayout on every frame.
+  /// Static so instances can reuse painters across frames.
   static final Map<String, TextPainter> _textCache = {};
   static const int _maxCacheEntries = 100;
 
-  // Caching Paint objects - Reused static instances instead of recreating them -> Giảm áp lực GC
-  static final Paint _strokePaint = Paint()
+  /// Paint objects stay as final instance fields instead of static fields to
+  /// avoid shared mutable state between painter instances.
+  /// Each frame gets its own small set of Paint objects, which is safer.
+  final Paint _strokePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2.0;
 
-  static final Paint _cornerPaint = Paint()
+  final Paint _cornerPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round
     ..strokeWidth = 3.0;
 
-  static final Paint _labelPaint = Paint()
-    ..style = PaintingStyle.fill;
+  final Paint _labelPaint = Paint()..style = PaintingStyle.fill;
 
   BoundingBoxPainter({
     required this.boxes,
@@ -201,12 +196,34 @@ class BoundingBoxPainter extends CustomPainter {
     int version = 0,
   }) : _version = version;
 
-  // ✅ FIX SV-011: O(1) comparison qua version counter
+  /// Releases cached [TextPainter] instances for labels owned by this painter.
+  /// Call this when the parent widget is disposed to avoid leaking layout
+  /// objects.
+  void dispose() {
+    for (final box in boxes) {
+      final tp = _textCache.remove(box.label);
+      tp?.dispose();
+    }
+  }
+
+  /// Clears the entire [TextPainter] cache and disposes every entry.
+  /// Intended for test tearDown logic to reset static state between tests and
+  /// avoid cross-test pollution.
+  // ignore: invalid_use_of_visible_for_testing_member
+  static void clearCacheForTesting() {
+    for (final tp in _textCache.values) {
+      tp.dispose();
+    }
+    _textCache.clear();
+  }
+
+  /// Returns true only when the version counter or mirror flag changes.
+  /// This stays `O(1)` and does not iterate through the boxes list.
   @override
   bool shouldRepaint(covariant BoundingBoxPainter old) {
     if (mirrorHorizontal != old.mirrorHorizontal) return true;
     if (_version != old._version) return true;
-    // Fallback nếu version không được cung cấp
+    // Fallback when versioning is not provided (`version == 0` on both sides).
     if (_version == 0 && old._version == 0) {
       if (boxes.length != old.boxes.length) return true;
       for (int i = 0; i < boxes.length; i++) {
@@ -243,22 +260,22 @@ class BoundingBoxPainter extends CustomPainter {
 
     final rect = Rect.fromLTRB(l, t, r, b);
     final color = _colorForLabel(box.label);
+
+    // Reduce opacity as missed frames increase to create a fade-out effect.
     final opacity = box.missedFrames == 0
         ? 1.0
         : (1.0 - box.missedFrames / 4.0).clamp(0.2, 1.0);
 
-    // ✅ FIX SV-008 & SV-004 Caching: 
-    // Mutate thuộc tính color trên static Paint instance tiết kiệm hàng ngàn objects tạo ra mỗi giây
-    // Do Flutter command recording ghi nhận state paint ở thời điểm gọi canvas.draw*
     _strokePaint.color = color.withValues(alpha: 0.85 * opacity);
     _cornerPaint.color = color.withValues(alpha: opacity);
-    _labelPaint.color = color.withValues(alpha: 0.9);
+    _labelPaint.color  = color.withValues(alpha: 0.9);
 
     canvas.drawRect(rect, _strokePaint);
     _drawCorners(canvas, rect, _cornerPaint);
     _drawLabel(canvas, size, rect, box.label, _labelPaint);
   }
 
+  /// Draws emphasized corners to keep the box visible on busy backgrounds.
   void _drawCorners(Canvas canvas, Rect rect, Paint paint) {
     final len = (rect.width * 0.15).clamp(8.0, 20.0);
     canvas.drawPath(
@@ -279,13 +296,8 @@ class BoundingBoxPainter extends CustomPainter {
     );
   }
 
-  void _drawLabel(
-    Canvas canvas,
-    Size size,
-    Rect rect,
-    String label,
-    Paint bgPaint,
-  ) {
+  void _drawLabel(Canvas canvas, Size size, Rect rect,
+      String label, Paint bgPaint) {
     final tp = _getOrCreatePainter(label);
     final lw = tp.width + 10;
     final lh = tp.height + 5;
@@ -301,6 +313,9 @@ class BoundingBoxPainter extends CustomPainter {
     tp.paint(canvas, Offset(rect.left + 5, lt + 2.5));
   }
 
+  /// Returns a cached [TextPainter] or creates a new one.
+  /// When the cache exceeds [_maxCacheEntries], the oldest half is evicted and
+  /// disposed.
   TextPainter _getOrCreatePainter(String label) {
     if (_textCache.containsKey(label)) return _textCache[label]!;
 
@@ -328,6 +343,8 @@ class BoundingBoxPainter extends CustomPainter {
     return painter;
   }
 
+  /// Assigns a stable color to each label based on its hash so the color stays
+  /// consistent across frames and across tracks of the same class.
   Color _colorForLabel(String label) {
     const palette = [
       Color(0xFF00E676),

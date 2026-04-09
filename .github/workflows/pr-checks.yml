@@ -1,4 +1,4 @@
-name: PR Checklist
+name: PR Quality Checks
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   pr-checks:
-    name: 📋 PR Quality Checks
+    name: PR quality checks
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -15,31 +15,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Enforce conventional commits
+      # Enforce Conventional Commits format on all commits within the PR.
+      # Configuration lives in .commitlintrc.yml at the repo root.
       - name: Validate commit messages
         uses: wagoid/commitlint-github-action@v6
         with:
           configFile: .commitlintrc.yml
 
-      # Check PR has linked issue
+      # Check whether the PR body includes an issue reference (Closes #123).
+      # Non-blocking: only warns, does not fail CI.
       - name: Check PR body for issue link
         run: |
           if ! echo "${{ github.event.pull_request.body }}" | grep -qE "(Closes|Fixes|Resolves) #[0-9]+"; then
-            echo "⚠️ PR body should reference an issue (Closes #123)"
-            # Non-blocking: just warn
+            echo "PR body should reference an issue (e.g. Closes #123)"
           fi
 
-      # Warn if PR is too large
+      # Warn if the PR changes more than 30 files at once.
+      # Large PRs are hard to review and are more prone to merge conflicts.
       - name: Check PR size
         run: |
-          CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1)
           FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
-          echo "Changed files: $FILES"
+          echo "Files changed: $FILES"
           if [ "$FILES" -gt 30 ]; then
-            echo "⚠️ This PR changes $FILES files — consider splitting into smaller PRs"
+            echo "This PR changes $FILES files — consider splitting it into smaller PRs"
           fi
 
-      # Auto-label based on changed paths
+      # Automatically add labels based on the paths of changed files.
+      # Path → label mapping is configured in .github/labeler.yml.
       - name: Auto-label PR
         uses: actions/labeler@v5
         with:

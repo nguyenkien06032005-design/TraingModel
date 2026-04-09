@@ -8,7 +8,7 @@ import 'features/detection/data/datasources/detection_local_datasource_impl.dart
 import 'features/detection/data/repositories/detection_repository_impl.dart';
 import 'features/detection/domain/repositories/detection_repository.dart';
 import 'features/detection/domain/usecases/load_model_usecase.dart';
-import 'features/detection/domain/usecases/close_model_usecase.dart';    // ← NEW SV-007
+import 'features/detection/domain/usecases/close_model_usecase.dart';
 import 'features/detection/domain/usecases/detection_object_from_frame.dart';
 import 'features/detection/presentation/bloc/detection_bloc.dart';
 import 'features/tts/data/datasources/tts_service.dart';
@@ -26,14 +26,26 @@ import 'features/settings/presentation/bloc/settings_bloc.dart';
 
 final sl = GetIt.instance;
 
+/// Registers dependencies in order: leaf services first, then orchestrators
+/// such as BLoCs. This keeps the graph free of circular dependencies.
+///
+/// Singleton vs lazy singleton rules:
+/// - [registerSingleton]: created immediately in [init], used for services
+///   that must run setup side effects before the app renders.
+/// - [registerLazySingleton]: created on first use, used for BLoCs and
+///   objects that do not need early warm-up.
+///   This also prevents two BLoCs from calling `loadModel()` at the same time
+///   on the same datasource singleton.
 Future<void> init() async {
-  // ── Storage ──────────────────────────────────────────────────────────────
+  // Storage
   sl.registerSingleton<LocalStorageService>(LocalStorageService());
   sl.registerSingleton<SettingsRepository>(
     SettingsRepositoryImpl(sl<LocalStorageService>()),
   );
 
-  // ── TTS ──────────────────────────────────────────────────────────────────
+  // TTS
+  // TtsService must be initialized before use. An eager singleton keeps
+  // the audio engine ready at app startup and avoids first-use latency.
   final ttsService = TtsService();
   await ttsService.initialize();
   sl.registerSingleton<TtsService>(ttsService);
@@ -42,14 +54,17 @@ Future<void> init() async {
   sl.registerSingleton(StopSpeakingUsecase(sl<TtsRepository>()));
   sl.registerSingleton(PauseSpeakingUsecase(sl<TtsRepository>()));
   sl.registerSingleton(ConfigureTtsUsecase(sl<TtsRepository>()));
-  sl.registerSingleton(TtsBloc(
+
+  // TtsBloc stays lazy to match DetectionBloc and to avoid premature
+  // initialization before MultiBlocProvider is ready.
+  sl.registerLazySingleton<TtsBloc>(() => TtsBloc(
     speakWarning:       sl(),
     stopSpeaking:       sl(),
     pauseSpeaking:      sl<PauseSpeakingUsecase>(),
     settingsRepository: sl<SettingsRepository>(),
   ));
 
-  // ── Detection ────────────────────────────────────────────────────────────
+  // Detection
   sl.registerSingleton(DetectionConfig());
   sl.registerSingleton<DetectionLocalDatasource>(
     DetectionLocalDatasourceImpl(sl<DetectionConfig>()),
@@ -58,16 +73,15 @@ Future<void> init() async {
     DetectionRepositoryImpl(sl()),
   );
   sl.registerSingleton(LoadModelUsecase(sl<DetectionRepository>()));
-  sl.registerSingleton(CloseModelUsecase(sl<DetectionRepository>()));  // ← NEW SV-007
+  sl.registerSingleton(CloseModelUsecase(sl<DetectionRepository>()));
   sl.registerSingleton(DetectionObjectFromFrame(sl<DetectionRepository>()));
 
-  // ✅ FIX SV-005: LazySingleton → chỉ tạo 1 DetectionBloc duy nhất
-  // registerFactory() tạo instance mới mỗi lần sl<DetectionBloc>() được gọi.
-  // Điều này gây risk 2 BLoC gọi loadModel() trên cùng 1 Datasource singleton
-  // → 2 isolate được spawn → race condition trên _modelLoaded flag.
+  // A lazy singleton prevents multiple DetectionBloc instances from sharing
+  // one datasource singleton and trying to spawn competing isolates on the
+  // same interpreter at the same time.
   sl.registerLazySingleton<DetectionBloc>(() => DetectionBloc(
-    loadModel:      sl<LoadModelUsecase>(),
-    closeModel:     sl<CloseModelUsecase>(),         // ← FIX SV-007
+    loadModel:       sl<LoadModelUsecase>(),
+    closeModel:      sl<CloseModelUsecase>(),
     detectFromFrame: sl<DetectionObjectFromFrame>(),
     onWarning: ({
       required String text,
@@ -80,10 +94,9 @@ Future<void> init() async {
     },
   ));
 
-  // ── Camera ───────────────────────────────────────────────────────────────
+  // Camera
   sl.registerSingleton(CameraService());
 
-  // ✅ FIX SV-005: SettingsBloc cũng là LazySingleton
   sl.registerLazySingleton<SettingsBloc>(() => SettingsBloc(
     sl<SettingsRepository>(),
     sl<ConfigureTtsUsecase>(),
