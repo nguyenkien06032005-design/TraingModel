@@ -1,3 +1,5 @@
+// lib/features/settings/presentation/bloc/settings_event.dart
+
 import 'package:equatable/equatable.dart';
 
 abstract class SettingsEvent extends Equatable {
@@ -38,9 +40,13 @@ class SettingsConfidencePanelToggled extends SettingsEvent {
   List<Object?> get props => [show];
 }
 
+/// Language is locked to [AppConstants.ttsLanguage] (vi-VN) for this release.
+/// This event exists to let the UI trigger a TTS engine reconfiguration
+/// (e.g. after an app lifecycle resume) without carrying a language parameter
+/// that would be silently ignored.
 class SettingsTtsLanguageChanged extends SettingsEvent {
-  final String lang;
-  const SettingsTtsLanguageChanged(this.lang);
+  const SettingsTtsLanguageChanged();
+
   @override
-  List<Object?> get props => [lang];
+  List<Object?> get props => [];
 }

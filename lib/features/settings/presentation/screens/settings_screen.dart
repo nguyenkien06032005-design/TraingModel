@@ -59,6 +59,9 @@ class SettingsScreen extends StatelessWidget {
                 title: const Text('Ngôn ngữ giọng đọc'),
                 subtitle: const Text('Hệ thống chỉ sử dụng tiếng Việt'),
                 trailing: const Text('Tiếng Việt'),
+                onTap: () => context
+                    .read<SettingsBloc>()
+                    .add(const SettingsTtsLanguageChanged()), // ← no arg
               ),
               const Divider(height: 32),
               _SectionHeader(title: 'Phát hiện vật thể'),

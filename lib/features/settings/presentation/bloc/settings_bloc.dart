@@ -109,7 +109,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     SettingsTtsLanguageChanged e,
     Emitter<SettingsState> emit,
   ) async {
-    final language = AppConstants.ttsLanguage;
+    // Language is locked to vi-VN. This handler reconfigures the TTS engine
+    // while preserving the current speechRate so the engine does not reset to
+    // its default speed after a lifecycle event.
+    const language = AppConstants.ttsLanguage;
     await _repository.setTtsLanguage(language);
     await _configureTts(
       language: language,

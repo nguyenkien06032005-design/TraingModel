@@ -78,7 +78,7 @@ void main() {
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
         await Future.delayed(const Duration(milliseconds: 10));
-        bloc.add(const SettingsTtsLanguageChanged(AppConstants.ttsLanguage));
+        bloc.add(const SettingsTtsLanguageChanged());
         await Future.delayed(const Duration(milliseconds: 10));
       },
       verify: (_) {
@@ -103,7 +103,7 @@ void main() {
       act: (bloc) async {
         bloc.add(const SettingsLoaded());
         await Future.delayed(const Duration(milliseconds: 10));
-        bloc.add(const SettingsTtsLanguageChanged(AppConstants.ttsLanguage));
+        bloc.add(const SettingsTtsLanguageChanged());
       },
       expect: () => [
         isA<SettingsState>().having((s) => s.isLoading, 'isLoading', isTrue),
@@ -124,7 +124,7 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 10));
         bloc.add(const SettingsSpeechRateChanged(0.8));
         await Future.delayed(const Duration(milliseconds: 10));
-        bloc.add(const SettingsTtsLanguageChanged(AppConstants.ttsLanguage));
+        bloc.add(const SettingsTtsLanguageChanged());
         await Future.delayed(const Duration(milliseconds: 10));
       },
       verify: (_) {

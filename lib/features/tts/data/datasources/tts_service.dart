@@ -1,29 +1,26 @@
+// lib/features/tts/data/datasources/tts_service.dart
+
 import 'dart:async';
+import 'dart:collection';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../../../core/constants/app_constants.dart';
 
-/// Wrapper around [FlutterTts] with cooldown protection and queue deduplication.
-///
-/// Important invariants:
-/// 1. The same text must not be spoken again within
-///    [AppConstants.ttsCooldownMs].
-/// 2. A text must not be added to the queue twice. Enqueue happens only once
-///    after the cooldown check succeeds.
-///
-/// Playback modes:
-/// - [speakWarning]: enqueue and wait for the current audio to finish.
-/// - [speakImmediate]: stop current audio and queue, then speak immediately.
-///   Used for high-priority danger warnings.
 class TtsService {
   final FlutterTts _tts = FlutterTts();
 
   bool _isSpeaking = false;
   final List<String> _queue = [];
 
-  /// Last accepted timestamp for each text, used to enforce cooldown.
-  /// The map is pruned periodically so it cannot grow without bound.
-  final Map<String, DateTime> _lastSpoken = {};
+  /// LinkedHashMap preserves insertion order so the oldest entry is always
+  /// `_lastSpoken.entries.first` — O(1) LRU eviction without sorting.
+  final LinkedHashMap<String, DateTime> _lastSpoken =
+      LinkedHashMap<String, DateTime>();
+
+  /// Timestamp of the last prune pass. Pruning runs at most once per cooldown
+  /// window to avoid an O(n) scan on every frame callback.
+  DateTime? _lastPruneAt;
 
   String _language = AppConstants.ttsLanguage;
   double _speechRate = AppConstants.ttsSpeechRate;
@@ -61,12 +58,6 @@ class TtsService {
     });
   }
 
-  /// Speaks text through the queue while respecting per-text cooldown.
-  ///
-  /// Processing order:
-  /// 1. Prune expired entries so the map stays bounded.
-  /// 2. Check cooldown and return `false` immediately if still inside it.
-  /// 3. Record the timestamp and enqueue exactly once.
   Future<bool> speakWarning(String text) async {
     final now = DateTime.now();
     _pruneLastSpoken(now);
@@ -77,14 +68,15 @@ class TtsService {
       return false;
     }
 
+    // LRU promotion: remove then reinsert so this entry moves to the end
+    // (most recently used). The LinkedHashMap's head is always the oldest.
+    _lastSpoken.remove(text);
     _lastSpoken[text] = now;
+
     _enqueue(text);
     return true;
   }
 
-  /// Speaks text immediately, bypassing the current queue.
-  /// Applies the same cooldown as [speakWarning] to avoid stutter when the
-  /// same danger warning is triggered repeatedly.
   Future<bool> speakImmediate(String text) async {
     final now = DateTime.now();
     _pruneLastSpoken(now);
@@ -95,6 +87,7 @@ class TtsService {
       return false;
     }
 
+    _lastSpoken.remove(text);
     _lastSpoken[text] = now;
 
     await _tts.stop();
@@ -107,30 +100,51 @@ class TtsService {
   Future<void> stop() async {
     _queue.clear();
     _lastSpoken.clear();
+    _lastPruneAt = null;
     await _tts.stop();
     _isSpeaking = false;
   }
 
   Future<void> pause() async => _tts.pause();
-
   bool get isSpeaking => _isSpeaking;
 
   Future<void> dispose() async {
     _queue.clear();
     _lastSpoken.clear();
+    _lastPruneAt = null;
     await _tts.stop();
     _isSpeaking = false;
   }
 
-  // Private helpers
+  // ── Private ──────────────────────────────────────────────────────────────
 
-  /// Removes entries older than two cooldown windows.
-  /// Runs only when the map grows beyond 100 entries to avoid an O(n) scan on
-  /// every frame.
+  /// Removes entries older than 2× the cooldown window.
+  ///
+  /// Runs at most once per cooldown period to keep the TTS hot path O(1).
+  /// Uses insertion-order traversal of [LinkedHashMap] so the oldest entries
+  /// are evicted first without any sorting.
   void _pruneLastSpoken(DateTime now) {
-    if (_lastSpoken.length > 100) {
-      _lastSpoken.removeWhere((_, time) =>
-          now.difference(time).inMilliseconds > AppConstants.ttsCooldownMs * 2);
+    // Throttle: skip prune if we ran one within the last cooldown window.
+    if (_lastPruneAt != null &&
+        now.difference(_lastPruneAt!).inMilliseconds <
+            AppConstants.ttsCooldownMs) {
+      return;
+    }
+    _lastPruneAt = now;
+
+    final cutoff = now.subtract(
+      Duration(milliseconds: AppConstants.ttsCooldownMs * 2),
+    );
+
+    // LinkedHashMap head = oldest entry. Walk forward and remove until
+    // we find a fresh entry (all remaining entries are guaranteed fresher).
+    while (_lastSpoken.isNotEmpty) {
+      final oldest = _lastSpoken.entries.first;
+      if (oldest.value.isBefore(cutoff)) {
+        _lastSpoken.remove(oldest.key);
+      } else {
+        break;
+      }
     }
   }
 

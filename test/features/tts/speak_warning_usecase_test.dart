@@ -263,12 +263,16 @@ void main() {
 
     blocTest<TtsBloc, TtsState>(
       'không phát giọng nói khi tính năng voice bị tắt trong cài đặt',
-      setUp: () => when(() => mockSettingsRepository.getVoiceEnabled())
-          .thenAnswer((_) async => false),
+      setUp: () {
+        when(() => mockSettingsRepository.getVoiceEnabled())
+            .thenAnswer((_) async => false);
+        when(() => mockRepo.stop()).thenAnswer((_) async {});
+      },
       build: buildBloc,
       act: (bloc) => bloc.add(const TtsSpeak('test')),
-      expect: () => <TtsState>[],
+      expect: () => [const TtsStopped()],
       verify: (_) {
+        verify(() => mockRepo.stop()).called(1);
         verifyNever(() => mockRepo.speakWarning(any()));
         verifyNever(() => mockRepo.speakImmediate(any()));
       },

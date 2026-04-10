@@ -42,11 +42,11 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
     try {
       final voiceEnabled = await _settingsRepository.getVoiceEnabled();
       if (!voiceEnabled) {
-        // Stop any active audio if voice has just been disabled.
-        if (state is TtsSpeaking) {
-          await _stopSpeaking();
-          emit(const TtsStopped());
-        }
+        // Stop any active audio regardless of current BLoC state.
+        // The engine may be speaking even if state is not TtsSpeaking
+        // (e.g. after an error recovery).
+        await _stopSpeaking();
+        if (state is! TtsStopped) emit(const TtsStopped());
         return;
       }
 
@@ -54,9 +54,6 @@ class TtsBloc extends Bloc<TtsEvent, TtsState> {
           ? await _speakWarning.immediate(event.text)
           : await _speakWarning(event.text);
 
-      // Trigger vibration only when TTS was accepted by the cooldown logic.
-      // Vibrating on every event would cause false repeated haptics even when
-      // no audio is actually spoken.
       if (accepted && event.withVibration) {
         final bool hasVibrator = await Vibration.hasVibrator();
         if (hasVibrator == true) {

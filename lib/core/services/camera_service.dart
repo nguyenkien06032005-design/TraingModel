@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:safe_vision_app/core/utils/perf_monitor.dart';
 import '../constants/app_constants.dart';
 import '../error/exceptions.dart' as ex;
 
@@ -30,8 +31,16 @@ class CameraService {
   /// Minimum interval between frames in milliseconds for the target FPS.
   static const int _minFrameMs = 1000 ~/ AppConstants.activeInferenceFps;
 
-  /// True while the previous frame is still being processed.
-  /// It is reset only by the caller-provided [onDone] callback.
+  /// Frame processing lock.
+  ///
+  /// THREADING INVARIANT: This field is read and written exclusively on the
+  /// main Dart isolate. Flutter's camera plugin delivers image-stream
+  /// callbacks on the platform thread, which is then scheduled into the
+  /// main Dart event loop — making mutation here safe without a mutex.
+  ///
+  /// If the camera plugin changes this delivery guarantee in a future
+  /// version, this field must be replaced with an atomic or a
+  /// [Completer]-based lock.
   bool _isProcessingFrame = false;
 
   bool _isInitializing = false;
@@ -152,6 +161,7 @@ class CameraService {
 
       // Drop the frame if the previous inference is still running.
       if (_isProcessingFrame) {
+        PerfMonitor.frameDropped();
         _busyDropCount++;
         if (kDebugMode && _busyDropCount % 30 == 0) {
           debugPrint(

@@ -94,28 +94,53 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
   /// This prevents the app from staying stuck after a delegate-level failure.
   Future<void> _killAndRespawnIsolate() async {
     if (kDebugMode) debugPrint('[DS] Respawning isolate...');
-    try {
-      final shutdownAck = ReceivePort();
-      if (_isolateSendPort != null) {
-        _isolateSendPort!.send(
-          _IsolateShutdown(replyPort: shutdownAck.sendPort),
-        );
+
+    // Step 1: capture and clear shared state atomically (single-threaded Dart).
+    final oldSendPort = _isolateSendPort;
+    final oldIsolate = _isolate;
+    final oldReceivePort = _mainReceivePort;
+
+    _isolateSendPort = null;
+    _isolate = null;
+    _mainReceivePort = null;
+    _isolateBusy = false;
+
+    // Step 2: ask the isolate to shut down gracefully (best-effort, 500 ms).
+    if (oldSendPort != null) {
+      try {
+        final shutdownAck = ReceivePort();
+        oldSendPort.send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
         await shutdownAck.first
             .timeout(const Duration(milliseconds: 500))
             .catchError((_) => null);
+        shutdownAck.close();
+      } catch (_) {
+        // Timeout or send error — proceed to force-kill.
       }
-      shutdownAck.close();
-      _isolate?.kill(priority: Isolate.immediate);
-      _mainReceivePort?.close();
-    } catch (_) {}
+    }
 
-    _isolate = null;
-    _mainReceivePort = null;
-    _isolateSendPort = null;
+    // Step 3: close the receive port BEFORE killing.
+    // Any messages still in flight from the old isolate are now discarded
+    // instead of being delivered to whichever ReceivePort is created next.
+    oldReceivePort?.close();
 
-    final modelData = await rootBundle.load(AssetPaths.modelFile);
-    await _spawnIsolate(modelData.buffer.asUint8List());
-    if (kDebugMode) debugPrint('[DS] Isolate respawned');
+    // Step 4: force-kill in case graceful shutdown stalled.
+    oldIsolate?.kill(priority: Isolate.immediate);
+
+    if (kDebugMode) debugPrint('[DS] Old isolate killed, spawning new one...');
+
+    // Step 5: load model bytes and spawn fresh isolate.
+    try {
+      final modelData = await rootBundle.load(AssetPaths.modelFile);
+      await _spawnIsolate(modelData.buffer.asUint8List());
+      _consecutiveTimeouts = 0;
+      if (kDebugMode) debugPrint('[DS] Isolate respawned successfully');
+    } catch (e) {
+      debugPrint('[DS] Respawn FAILED: $e');
+      // _modelLoaded remains true but _isolateSendPort is null —
+      // runInference will return [] safely until next loadModel call.
+      _modelLoaded = false;
+    }
   }
 
   /// Guard that prevents two frames from running inference at the same time in
@@ -195,29 +220,37 @@ class DetectionLocalDatasourceImpl implements DetectionLocalDatasource {
 
   @override
   Future<void> closeModel() async {
-    if (_isolateSendPort != null) {
-      final shutdownAck = ReceivePort();
-      _isolateSendPort!.send(
-        _IsolateShutdown(replyPort: shutdownAck.sendPort),
-      );
-      await shutdownAck.first.timeout(
-        const Duration(milliseconds: 500),
-        onTimeout: () {
-          debugPrint('[DS] isolate shutdown timeout — force killing');
-          return null;
-        },
-      ).catchError((_) => null);
-      shutdownAck.close();
+    // Capture and clear before any await so concurrent runInference sees null.
+    final oldSendPort = _isolateSendPort;
+    final oldIsolate = _isolate;
+    final oldReceivePort = _mainReceivePort;
+
+    _isolateSendPort = null;
+    _isolate = null;
+    _mainReceivePort = null;
+    _isolateBusy = false;
+    _modelLoaded = false;
+    _consecutiveTimeouts = 0;
+
+    if (oldSendPort != null) {
+      try {
+        final shutdownAck = ReceivePort();
+        oldSendPort.send(_IsolateShutdown(replyPort: shutdownAck.sendPort));
+        await shutdownAck.first.timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () {
+            debugPrint('[DS] isolate shutdown timeout — force killing');
+            return null;
+          },
+        ).catchError((_) => null);
+        shutdownAck.close();
+      } catch (_) {}
     }
 
-    _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _mainReceivePort?.close();
-    _mainReceivePort = null;
-    _isolateSendPort = null;
-    _modelLoaded = false;
-    _isolateBusy = false;
-    _consecutiveTimeouts = 0;
+    // Close port before kill (same drain-order fix as _killAndRespawnIsolate).
+    oldReceivePort?.close();
+    oldIsolate?.kill(priority: Isolate.immediate);
+
     if (kDebugMode) debugPrint('[DS] model closed, resources freed');
   }
 }

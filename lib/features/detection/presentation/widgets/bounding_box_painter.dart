@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/detection_object.dart';
 
+
 /// Position and state for an object after tracker smoothing.
 /// [missedFrames] is used to gradually reduce opacity when the object
 /// temporarily disappears.

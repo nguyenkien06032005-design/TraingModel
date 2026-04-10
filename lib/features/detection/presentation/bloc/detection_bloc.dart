@@ -9,6 +9,7 @@ import '../../../../core/usecases/usecase.dart';
 import '../../domain/usecases/load_model_usecase.dart';
 import '../../domain/usecases/close_model_usecase.dart';
 import '../../domain/usecases/detection_object_from_frame.dart';
+import '../../../../core/utils/perf_monitor.dart';
 import 'detection_event.dart';
 import 'detection_state.dart';
 
@@ -46,6 +47,24 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   /// Used to debounce warnings so they trigger only after 3 stable frames.
   Map<String, int> _consecutiveFrames = {};
 
+  /// Reusable sort buffer — avoids a heap allocation on every frame.
+  ///
+  /// [_triggerWarningIfNeeded] needs a sorted copy of the detection list to
+  /// process objects in a stable label order. Previously this was done with
+  /// `[...detections]..sort(...)`, which allocates a new [List] on every call
+  /// (up to 6 times per second at the target frame rate). Reusing this buffer
+  /// eliminates that per-frame GC pressure while keeping the sort result local
+  /// to the method.
+  ///
+  /// Lifecycle: cleared on [_onStarted], [_onStopped], and [close].
+  final List<DetectionObject> _sortBuffer = [];
+
+  /// Tracks the in-flight [CloseModelUsecase] future so [_onStarted] can
+  /// await it before loading a new model.  Because each `on<>` registration
+  /// has its own event stream, awaiting close inside [_onStopped] alone is not
+  /// enough — a concurrent [DetectionStarted] would bypass it.
+  Future<void>? _closeFuture;
+
   DetectionBloc({
     required LoadModelUsecase loadModel,
     required CloseModelUsecase closeModel,
@@ -65,8 +84,16 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     DetectionStarted event,
     Emitter<DetectionState> emit,
   ) async {
+    // Wait for any in-flight close to finish before loading a new model.
+    // This prevents the race where a rapid Stop→Start sequence calls
+    // loadModel while the previous interpreter is still being released.
+    if (_closeFuture != null) {
+      await _closeFuture;
+      _closeFuture = null;
+    }
     _previousObjects = {};
     _consecutiveFrames = {};
+    _sortBuffer.clear();
     if (kDebugMode) debugPrint('[DetectionBloc] loading model...');
     emit(const DetectionLoading());
     try {
@@ -79,13 +106,17 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     }
   }
 
-  void _onStopped(DetectionStopped event, Emitter<DetectionState> emit) {
+  Future<void> _onStopped(
+    DetectionStopped event,
+    Emitter<DetectionState> emit,
+  ) async {
     _previousObjects.clear();
     _consecutiveFrames.clear();
+    _sortBuffer.clear();
     emit(const DetectionInitial());
-    // Release the isolate interpreter as fire-and-forget because the BLoC has
-    // already transitioned back to the initial state.
-    unawaited(_closeModel.call(const NoParams()));
+    // Store the close future so that a concurrent _onStarted can await it.
+    _closeFuture = _closeModel.call(const NoParams());
+    await _closeFuture;
   }
 
   Future<void> _onFrameReceived(
@@ -94,6 +125,12 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   ) async {
     // [event.onDone] must be called in finally so CameraService can release
     // the frame lock and accept the next frame.
+
+    // Stopwatch is only allocated in debug builds. The kDebugMode constant is
+    // evaluated at compile time, so the release build eliminates this branch
+    // entirely — zero overhead in production.
+    final sw = kDebugMode ? (Stopwatch()..start()) : null;
+
     try {
       final detections = await _detectFromFrame(
         event.image,
@@ -108,8 +145,16 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
         },
       );
 
-      if (kDebugMode && detections.isNotEmpty) {
-        debugPrint('[DetectionBloc] detections=${detections.length}');
+      if (kDebugMode) {
+        sw?.stop();
+        // Record how long the full inference round-trip took (frame dispatch →
+        // isolate → NMS → result), then mark this frame as successfully
+        // processed so PerfMonitor can compute rolling FPS and avg latency.
+        PerfMonitor.inferenceCompleted(sw?.elapsedMilliseconds ?? 0);
+        PerfMonitor.frameReceived();
+        if (detections.isNotEmpty) {
+          debugPrint('[DetectionBloc] detections=${detections.length}');
+        }
       }
 
       emit(DetectionSuccess(
@@ -134,9 +179,20 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   ///
   /// Dangerous objects are spoken immediately with vibration, while normal
   /// objects are queued through TTS.
+  ///
+  /// Uses [_sortBuffer] instead of a spread copy to avoid per-frame heap
+  /// allocation. The buffer is cleared and repopulated on each call, so its
+  /// contents are never stale across frames.
   void _triggerWarningIfNeeded(List<DetectionObject> detections) {
     final currentObjects = _groupAreasByLabel(detections);
-    final sortedDetections = [...detections]..sort((a, b) {
+
+    // Reuse _sortBuffer: clear → addAll → sort.
+    // This is equivalent to `[...detections]..sort(...)` but reuses the
+    // backing array instead of allocating a new List on every frame.
+    _sortBuffer
+      ..clear()
+      ..addAll(detections)
+      ..sort((a, b) {
         final labelCompare = a.label.compareTo(b.label);
         if (labelCompare != 0) return labelCompare;
         return b.boundingBox.area.compareTo(a.boundingBox.area);
@@ -146,7 +202,7 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     final currentIndices = <String, int>{};
     final newConsecutive = <String, int>{};
 
-    for (final d in sortedDetections) {
+    for (final d in _sortBuffer) {
       final currentIndex = currentIndices.update(
         d.label,
         (value) => value + 1,
@@ -214,5 +270,11 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
       areas.sort((a, b) => b.compareTo(a));
     }
     return grouped;
+  }
+
+  @override
+  Future<void> close() async {
+    _sortBuffer.clear();
+    return super.close();
   }
 }
