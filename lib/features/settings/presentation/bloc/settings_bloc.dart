@@ -48,6 +48,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     final confThresh = await _repository.getConfidenceThreshold();
     final voiceEnabled = await _repository.getVoiceEnabled();
     final showPanel = await _repository.getShowConfidencePanel();
+
+    // Language is intentionally hardcoded to vi-VN rather than read from
+    // _repository.getTtsLanguage(). The repository getter exists for future
+    // multi-language support but is currently dead API surface.
     final language = AppConstants.ttsLanguage;
 
     _detectionConfig.setConfidenceThreshold(confThresh);

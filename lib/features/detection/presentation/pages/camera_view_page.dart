@@ -39,8 +39,8 @@ class _CameraViewPageState extends State<CameraViewPage>
   /// callbacks can detect the mismatch and return early.
   int _cameraSession = 0;
 
-  late final ValueNotifier<List<SmoothedBox>> _boxNotifier =
-      ValueNotifier(const []);
+  late final ValueNotifier<({List<SmoothedBox> boxes, int version})>
+      _boxNotifier = ValueNotifier((boxes: const [], version: 0));
   bool _boxNotifierDisposed = false;
 
   _LifecyclePhase _phase = _LifecyclePhase.active;
@@ -280,7 +280,7 @@ class _CameraViewPageState extends State<CameraViewPage>
 
   void _setBoxes(List<SmoothedBox> boxes) {
     if (_phase == _LifecyclePhase.disposed || _boxNotifierDisposed) return;
-    _boxNotifier.value = boxes;
+    _boxNotifier.value = (boxes: boxes, version: _tracker.version);
   }
 
   void _disposeBoxNotifier() {
@@ -293,7 +293,7 @@ class _CameraViewPageState extends State<CameraViewPage>
 enum _LifecyclePhase { active, paused, disposed }
 
 class _DetectionOverlay extends StatelessWidget {
-  final ValueNotifier<List<SmoothedBox>> boxNotifier;
+  final ValueNotifier<({List<SmoothedBox> boxes, int version})> boxNotifier;
   final DetectionState state;
   final bool isFront;
   final Widget Function(String) onError;
@@ -311,13 +311,15 @@ class _DetectionOverlay extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         RepaintBoundary(
-          child: ValueListenableBuilder<List<SmoothedBox>>(
+          child:
+              ValueListenableBuilder<({List<SmoothedBox> boxes, int version})>(
             valueListenable: boxNotifier,
-            builder: (_, boxes, __) => IgnorePointer(
+            builder: (_, data, __) => IgnorePointer(
               child: CustomPaint(
                 painter: BoundingBoxPainter(
-                  boxes: boxes,
+                  boxes: data.boxes,
                   mirrorHorizontal: isFront,
+                  version: data.version,
                 ),
               ),
             ),

@@ -87,9 +87,18 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     // Wait for any in-flight close to finish before loading a new model.
     // This prevents the race where a rapid Stop→Start sequence calls
     // loadModel while the previous interpreter is still being released.
+    //
+    // The try/catch is necessary because _closeModel may have thrown,
+    // leaving a rejected future in _closeFuture. Re-awaiting a rejected
+    // future without a catch would propagate the error into BLoC internals.
     if (_closeFuture != null) {
-      await _closeFuture;
-      _closeFuture = null;
+      try {
+        await _closeFuture;
+      } catch (e) {
+        debugPrint('[DetectionBloc] _closeFuture threw on restart: $e');
+      } finally {
+        _closeFuture = null;
+      }
     }
     _previousObjects = {};
     _consecutiveFrames = {};
@@ -116,7 +125,13 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
     emit(const DetectionInitial());
     // Store the close future so that a concurrent _onStarted can await it.
     _closeFuture = _closeModel.call(const NoParams());
-    await _closeFuture;
+    try {
+      await _closeFuture;
+    } catch (e) {
+      debugPrint('[DetectionBloc] closeModel error: $e');
+    } finally {
+      _closeFuture = null;
+    }
   }
 
   Future<void> _onFrameReceived(
@@ -275,6 +290,13 @@ class DetectionBloc extends Bloc<DetectionEvent, DetectionState> {
   @override
   Future<void> close() async {
     _sortBuffer.clear();
+    // Await any in-flight model teardown to prevent orphaned isolates
+    // during hot-restart or fast navigation.
+    if (_closeFuture != null) {
+      try {
+        await _closeFuture;
+      } catch (_) {}
+    }
     return super.close();
   }
 }

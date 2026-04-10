@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/detection_object.dart';
@@ -172,18 +174,23 @@ class BoxTracker {
 /// walking every box on each frame.
 ///
 /// [TextPainter] instances are cached by label to avoid repeated text layout.
-/// The cache is capped with LRU-style eviction at 100 entries.
-/// Call [dispose] when the painter is no longer needed to release any
-/// [TextPainter] objects owned by this painter's labels.
+/// The cache uses LRU eviction via [LinkedHashMap]: entries are promoted to
+/// the tail on access and evicted from the head when full.
+///
+/// The cache manages its own lifecycle. Instance [dispose] is intentionally a
+/// no-op for the static cache — eviction handles cleanup. This avoids a
+/// use-after-free trap when two painter instances briefly coexist during a
+/// [ValueListenableBuilder] rebuild.
 class BoundingBoxPainter extends CustomPainter {
   final List<SmoothedBox> boxes;
   final bool mirrorHorizontal;
   final int _version;
 
-  /// [TextPainter] cache by label to avoid relayout on every frame.
-  /// Static so instances can reuse painters across frames.
-  static final Map<String, TextPainter> _textCache = {};
-  static const int _maxCacheEntries = 100;
+  /// LRU [TextPainter] cache: head = oldest (eviction target), tail = newest.
+  /// Uses [LinkedHashMap] insertion-order semantics for O(1) promotion.
+  static final LinkedHashMap<String, TextPainter> _textCache =
+      LinkedHashMap<String, TextPainter>();
+  static const int _maxCacheEntries = 50;
 
   /// Paint objects stay as final instance fields instead of static fields to
   /// avoid shared mutable state between painter instances.
@@ -205,14 +212,14 @@ class BoundingBoxPainter extends CustomPainter {
     int version = 0,
   }) : _version = version;
 
-  /// Releases cached [TextPainter] instances for labels owned by this painter.
-  /// Call this when the parent widget is disposed to avoid leaking layout
-  /// objects.
+  /// No-op for instance disposal.
+  ///
+  /// [CustomPainter] has no framework-managed `dispose()` lifecycle, so this
+  /// method is never called automatically. The static [_textCache] manages its
+  /// own lifecycle through LRU eviction. Removing entries here would cause a
+  /// use-after-free if two painter instances briefly coexist during a rebuild.
   void dispose() {
-    for (final box in boxes) {
-      final tp = _textCache.remove(box.label);
-      tp?.dispose();
-    }
+    // Intentionally empty — LRU eviction handles cache cleanup.
   }
 
   /// Clears the entire [TextPainter] cache and disposes every entry.
@@ -323,17 +330,21 @@ class BoundingBoxPainter extends CustomPainter {
   }
 
   /// Returns a cached [TextPainter] or creates a new one.
-  /// When the cache exceeds [_maxCacheEntries], the oldest half is evicted and
-  /// disposed.
+  ///
+  /// On cache hit, the entry is promoted to the tail (most recently used).
+  /// On cache miss at capacity, the head (least recently used) is evicted.
   TextPainter _getOrCreatePainter(String label) {
-    if (_textCache.containsKey(label)) return _textCache[label]!;
+    if (_textCache.containsKey(label)) {
+      // Promote to MRU position: remove and reinsert at tail.
+      final tp = _textCache.remove(label)!;
+      _textCache[label] = tp;
+      return tp;
+    }
 
+    // Evict LRU entry (head of LinkedHashMap) when at capacity.
     if (_textCache.length >= _maxCacheEntries) {
-      final toEvict = _textCache.keys.take(_maxCacheEntries ~/ 2).toList();
-      for (final key in toEvict) {
-        _textCache[key]!.dispose();
-        _textCache.remove(key);
-      }
+      final lruKey = _textCache.keys.first;
+      _textCache.remove(lruKey)!.dispose();
     }
 
     final painter = TextPainter(
